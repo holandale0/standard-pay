@@ -11,6 +11,7 @@ import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.core.Response;
 import org.eclipse.microprofile.openapi.annotations.Operation;
+import org.eclipse.microprofile.openapi.annotations.security.SecurityRequirementsSet;
 import org.eclipse.microprofile.openapi.annotations.tags.Tag;
 import org.leonardo.standardpay.merchants.control.MerchantRegistry;
 import org.leonardo.standardpay.merchants.entity.Merchant;
@@ -52,6 +53,7 @@ public class MerchantsResource {
     }
 
     @POST
+    @SecurityRequirementsSet // vazio: o cadastro é de onde a chave sai
     @Operation(summary = "Create a merchant account",
             description = "Returns the API key. It is shown only once — store it safely.")
     public Response create(@Valid @NotNull CreateMerchantRequest request) {

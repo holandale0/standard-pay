@@ -1,0 +1,460 @@
+{
+  "info": {
+    "name": "StandardPay",
+    "description": "Jornada completa de uma integração com o StandardPay, com testes em cada passo.\n\nRode a collection inteira, em ordem (Runner do Postman ou `newman run`). Cada requisição guarda nas variáveis da collection o que a seguinte precisa — a chave de API do lojista, o id do pagamento —, então nada precisa ser copiado à mão.\n\nSó a variável `baseUrl` vem do ambiente.\n\nAs requisições da pasta **Checkout** fazem o papel do pagador no navegador: postam o formulário da página de pagamento.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{apiKey}}", "type": "string" }]
+  },
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Vale para toda requisição: erro sempre no formato padrão.",
+          "if (pm.response.code >= 400 && pm.response.headers.get('Content-Type')?.includes('json')) {",
+          "    pm.test('erro no formato { error: { code, message } }', () => {",
+          "        const body = pm.response.json();",
+          "        pm.expect(body.error.code).to.be.a('string');",
+          "        pm.expect(body.error.message).to.be.a('string');",
+          "    });",
+          "}"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    { "key": "apiKey", "value": "" },
+    { "key": "merchantId", "value": "" },
+    { "key": "paymentId", "value": "" },
+    { "key": "idempotencyKey", "value": "" },
+    { "key": "canceledPaymentId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "1. Lojista",
+      "item": [
+        {
+          "name": "Criar conta de lojista",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/v1/merchants",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Loja do Postman\",\n  \"webhookUrl\": \"http://localhost:1/standardpay-webhooks\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "O webhookUrl aponta de propósito para uma porta fechada: os eventos são gerados e as tentativas de entrega ficam registradas, visíveis no último passo."
+          },
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "pm.test('201 Created', () => pm.response.to.have.status(201));",
+              "const body = pm.response.json();",
+              "pm.test('chave de API de simulação', () => pm.expect(body.apiKey).to.match(/^sk_test_/));",
+              "pm.test('segredo de webhook', () => pm.expect(body.webhookSecret).to.match(/^whsec_/));",
+              "pm.collectionVariables.set('apiKey', body.apiKey);",
+              "pm.collectionVariables.set('merchantId', body.id);"
+            ]}
+          }]
+        },
+        {
+          "name": "Consultar o próprio lojista",
+          "request": { "method": "GET", "url": "{{baseUrl}}/v1/merchants/me" },
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "pm.test('200 OK', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('é o lojista da chave', () => pm.expect(body.id).to.eql(pm.collectionVariables.get('merchantId')));",
+              "pm.test('a chave nunca volta a aparecer', () => pm.expect(body).to.not.have.property('apiKey'));",
+              "pm.test('só os 4 últimos dígitos', () => pm.expect(pm.collectionVariables.get('apiKey')).to.match(new RegExp(body.apiKeyLast4 + '$')));"
+            ]}
+          }]
+        }
+      ]
+    },
+    {
+      "name": "2. Erros",
+      "item": [
+        {
+          "name": "Sem chave de API → 401",
+          "request": { "auth": { "type": "noauth" }, "method": "GET", "url": "{{baseUrl}}/v1/payments" },
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "pm.test('401 Unauthorized', () => pm.response.to.have.status(401));",
+              "pm.test('código invalid_api_key', () => pm.expect(pm.response.json().error.code).to.eql('invalid_api_key'));"
+            ]}
+          }]
+        },
+        {
+          "name": "Valor zero → 400",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/v1/payments",
+            "body": { "mode": "raw", "raw": "{ \"amount\": 0 }", "options": { "raw": { "language": "json" } } }
+          },
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "pm.test('400 Bad Request', () => pm.response.to.have.status(400));",
+              "pm.test('lembra que o valor é em centavos', () => pm.expect(pm.response.json().error.message).to.include('amounts are in cents'));"
+            ]}
+          }]
+        },
+        {
+          "name": "returnUrl que não é http → 400",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/v1/payments",
+            "body": { "mode": "raw", "raw": "{ \"amount\": 100, \"returnUrl\": \"javascript:alert(1)\" }", "options": { "raw": { "language": "json" } } }
+          },
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "pm.test('400 Bad Request', () => pm.response.to.have.status(400));",
+              "pm.test('código invalid_url', () => pm.expect(pm.response.json().error.code).to.eql('invalid_url'));"
+            ]}
+          }]
+        },
+        {
+          "name": "Pagamento inexistente → 404",
+          "request": { "method": "GET", "url": "{{baseUrl}}/v1/payments/pay_naoexiste" },
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "pm.test('404 Not Found', () => pm.response.to.have.status(404));",
+              "pm.test('código resource_not_found', () => pm.expect(pm.response.json().error.code).to.eql('resource_not_found'));"
+            ]}
+          }]
+        }
+      ]
+    },
+    {
+      "name": "3. Pagamento",
+      "item": [
+        {
+          "name": "Criar cobrança",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": { "type": "text/javascript", "exec": [
+                "// Uma chave nova a cada execução da collection.",
+                "pm.collectionVariables.set('idempotencyKey', 'postman-' + Date.now());"
+              ]}
+            },
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": [
+                "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                "const body = pm.response.json();",
+                "pm.test('pendente, esperando o pagador', () => pm.expect(body.status).to.eql('pending'));",
+                "pm.test('valor em centavos', () => pm.expect(body.amount).to.eql(19500));",
+                "pm.test('moeda padrão BRL', () => pm.expect(body.currency).to.eql('BRL'));",
+                "pm.test('metadata devolvido intacto', () => pm.expect(body.metadata.orderId).to.eql('1234'));",
+                "pm.test('checkoutUrl para redirecionar o pagador', () => pm.expect(body.checkoutUrl).to.include('/checkout/' + body.id));",
+                "pm.collectionVariables.set('paymentId', body.id);"
+              ]}
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "{{idempotencyKey}}" }
+            ],
+            "url": "{{baseUrl}}/v1/payments",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 19500,\n  \"description\": \"Pedido 1234\",\n  \"metadata\": { \"orderId\": \"1234\" },\n  \"returnUrl\": \"https://loja.example/pedido/1234/obrigado\",\n  \"cancelUrl\": \"https://loja.example/carrinho\"\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          }
+        },
+        {
+          "name": "Repetir com a mesma Idempotency-Key",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "{{idempotencyKey}}" }
+            ],
+            "url": "{{baseUrl}}/v1/payments",
+            "body": { "mode": "raw", "raw": "{ \"amount\": 19500 }", "options": { "raw": { "language": "json" } } },
+            "description": "Simula o duplo clique, ou a rede caindo depois de o servidor gravar. Volta a mesma cobrança."
+          },
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "pm.test('a mesma cobrança, e não uma segunda', () => pm.expect(pm.response.json().id).to.eql(pm.collectionVariables.get('paymentId')));"
+            ]}
+          }]
+        },
+        {
+          "name": "Consultar cobrança",
+          "request": { "method": "GET", "url": "{{baseUrl}}/v1/payments/{{paymentId}}" },
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "pm.test('200 OK', () => pm.response.to.have.status(200));",
+              "pm.test('ainda pendente', () => pm.expect(pm.response.json().status).to.eql('pending'));"
+            ]}
+          }]
+        },
+        {
+          "name": "Listar pendentes",
+          "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/v1/payments?status=pending&limit=50", "host": ["{{baseUrl}}"], "path": ["v1", "payments"], "query": [{ "key": "status", "value": "pending" }, { "key": "limit", "value": "50" }] } },
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "pm.test('200 OK', () => pm.response.to.have.status(200));",
+              "pm.test('a cobrança está na lista', () => pm.expect(pm.response.json().map(p => p.id)).to.include(pm.collectionVariables.get('paymentId')));"
+            ]}
+          }]
+        }
+      ]
+    },
+    {
+      "name": "4. Checkout (o pagador)",
+      "item": [
+        {
+          "name": "Abrir a página de pagamento",
+          "request": { "auth": { "type": "noauth" }, "method": "GET", "url": "{{baseUrl}}/checkout/{{paymentId}}" },
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "pm.test('200 OK, em HTML', () => { pm.response.to.have.status(200); pm.expect(pm.response.headers.get('Content-Type')).to.include('text/html'); });",
+              "pm.test('valor em reais', () => pm.expect(pm.response.text()).to.include('R$ 195,00'));",
+              "pm.test('aviso de simulação', () => pm.expect(pm.response.text()).to.include('nenhum valor real é cobrado'));"
+            ]}
+          }]
+        },
+        {
+          "name": "Cartão com saldo insuficiente",
+          "protocolProfileBehavior": { "followRedirects": false },
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "url": "{{baseUrl}}/checkout/{{paymentId}}/card",
+            "body": { "mode": "urlencoded", "urlencoded": [{ "key": "cardNumber", "value": "4000 0000 0000 9995" }] }
+          },
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "pm.test('a página volta com o motivo', () => { pm.response.to.have.status(200); pm.expect(pm.response.text()).to.include('Saldo insuficiente'); });"
+            ]}
+          }]
+        },
+        {
+          "name": "Recusa não encerra a cobrança",
+          "request": { "method": "GET", "url": "{{baseUrl}}/v1/payments/{{paymentId}}" },
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "const body = pm.response.json();",
+              "pm.test('continua pendente', () => pm.expect(body.status).to.eql('pending'));",
+              "pm.test('o lojista vê o motivo', () => pm.expect(body.failureCode).to.eql('insufficient_funds'));"
+            ]}
+          }]
+        },
+        {
+          "name": "Cartão aprovado",
+          "protocolProfileBehavior": { "followRedirects": false },
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "url": "{{baseUrl}}/checkout/{{paymentId}}/card",
+            "body": { "mode": "urlencoded", "urlencoded": [{ "key": "cardNumber", "value": "4242 4242 4242 4242" }] }
+          },
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "pm.test('303, de volta para a loja', () => pm.response.to.have.status(303));",
+              "const location = pm.response.headers.get('Location');",
+              "pm.test('para o returnUrl, com o resultado', () => {",
+              "    pm.expect(location).to.include('https://loja.example/pedido/1234/obrigado');",
+              "    pm.expect(location).to.include('payment_id=' + pm.collectionVariables.get('paymentId'));",
+              "    pm.expect(location).to.include('status=succeeded');",
+              "});"
+            ]}
+          }]
+        },
+        {
+          "name": "Cobrança paga",
+          "request": { "method": "GET", "url": "{{baseUrl}}/v1/payments/{{paymentId}}" },
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "const body = pm.response.json();",
+              "pm.test('aprovada', () => pm.expect(body.status).to.eql('succeeded'));",
+              "pm.test('com cartão final 4242', () => { pm.expect(body.method).to.eql('card'); pm.expect(body.cardLast4).to.eql('4242'); });",
+              "pm.test('a recusa anterior foi limpa', () => pm.expect(body.failureCode).to.be.null);",
+              "pm.test('com data de pagamento', () => pm.expect(body.paidAt).to.be.a('string'));"
+            ]}
+          }]
+        }
+      ]
+    },
+    {
+      "name": "5. Estorno",
+      "item": [
+        {
+          "name": "Estorno parcial de R$ 50,00",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/v1/payments/{{paymentId}}/refunds",
+            "body": { "mode": "raw", "raw": "{ \"amount\": 5000, \"reason\": \"Um item a menos\" }", "options": { "raw": { "language": "json" } } }
+          },
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "pm.test('201 Created', () => pm.response.to.have.status(201));",
+              "const body = pm.response.json();",
+              "pm.test('estornou 5000 centavos', () => pm.expect(body.amount).to.eql(5000));",
+              "pm.test('o pagamento registra o estornado', () => pm.expect(body.payment.amountRefunded).to.eql(5000));"
+            ]}
+          }]
+        },
+        {
+          "name": "Estornar o restante (sem amount)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/v1/payments/{{paymentId}}/refunds",
+            "body": { "mode": "raw", "raw": "{}", "options": { "raw": { "language": "json" } } }
+          },
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "pm.test('201 Created', () => pm.response.to.have.status(201));",
+              "pm.test('estornou o que faltava', () => pm.expect(pm.response.json().amount).to.eql(14500));",
+              "pm.test('totalmente estornado', () => pm.expect(pm.response.json().payment.amountRefunded).to.eql(19500));"
+            ]}
+          }]
+        },
+        {
+          "name": "Estornar de novo → 409",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/v1/payments/{{paymentId}}/refunds",
+            "body": { "mode": "raw", "raw": "{}", "options": { "raw": { "language": "json" } } }
+          },
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "pm.test('409 Conflict', () => pm.response.to.have.status(409));",
+              "pm.test('código already_refunded', () => pm.expect(pm.response.json().error.code).to.eql('already_refunded'));"
+            ]}
+          }]
+        },
+        {
+          "name": "Listar estornos",
+          "request": { "method": "GET", "url": "{{baseUrl}}/v1/payments/{{paymentId}}/refunds" },
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "pm.test('os dois estornos, na ordem', () => pm.expect(pm.response.json().map(r => r.amount)).to.eql([5000, 14500]));"
+            ]}
+          }]
+        }
+      ]
+    },
+    {
+      "name": "6. Cancelamento",
+      "item": [
+        {
+          "name": "Criar outra cobrança",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/v1/payments",
+            "body": { "mode": "raw", "raw": "{ \"amount\": 1000, \"description\": \"Para cancelar\" }", "options": { "raw": { "language": "json" } } }
+          },
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "pm.test('201 Created', () => pm.response.to.have.status(201));",
+              "pm.collectionVariables.set('canceledPaymentId', pm.response.json().id);"
+            ]}
+          }]
+        },
+        {
+          "name": "Cancelar",
+          "request": { "method": "POST", "url": "{{baseUrl}}/v1/payments/{{canceledPaymentId}}/cancel" },
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "pm.test('200 OK', () => pm.response.to.have.status(200));",
+              "pm.test('cancelada', () => pm.expect(pm.response.json().status).to.eql('canceled'));"
+            ]}
+          }]
+        },
+        {
+          "name": "Pagar cobrança cancelada não paga",
+          "protocolProfileBehavior": { "followRedirects": false },
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "url": "{{baseUrl}}/checkout/{{canceledPaymentId}}/pix"
+          },
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "pm.test('a página mostra o cancelamento', () => { pm.response.to.have.status(200); pm.expect(pm.response.text()).to.include('Pagamento cancelado'); });"
+            ]}
+          }]
+        },
+        {
+          "name": "Estornar cobrança cancelada → 409",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/v1/payments/{{canceledPaymentId}}/refunds",
+            "body": { "mode": "raw", "raw": "{}", "options": { "raw": { "language": "json" } } }
+          },
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "pm.test('409 Conflict', () => pm.response.to.have.status(409));",
+              "pm.test('código payment_not_refundable', () => pm.expect(pm.response.json().error.code).to.eql('payment_not_refundable'));"
+            ]}
+          }]
+        }
+      ]
+    },
+    {
+      "name": "7. Webhooks",
+      "item": [
+        {
+          "name": "Entregas registradas",
+          "request": { "method": "GET", "url": "{{baseUrl}}/v1/webhook-deliveries?limit=50" },
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "pm.test('200 OK', () => pm.response.to.have.status(200));",
+              "const tipos = pm.response.json().map(d => d.eventType);",
+              "pm.test('um evento para cada mudança da jornada', () => {",
+              "    pm.expect(tipos).to.include('payment.failed');",
+              "    pm.expect(tipos).to.include('payment.succeeded');",
+              "    pm.expect(tipos).to.include('refund.succeeded');",
+              "    pm.expect(tipos).to.include('payment.canceled');",
+              "});",
+              "pm.test('cada entrega traz o corpo exato que foi assinado', () =>",
+              "    pm.response.json().forEach(d => pm.expect(JSON.parse(d.payload).id).to.eql(d.id)));"
+            ]}
+          }]
+        }
+      ]
+    }
+  ]
+}

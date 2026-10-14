@@ -51,6 +51,28 @@ Testes (sobem um Postgres de verdade, também pelo Docker):
 ./mvnw test
 ```
 
+## Explorando a API
+
+**Swagger UI** em `/q/swagger-ui`, com a especificação OpenAPI em `/q/openapi`.
+Crie um lojista em `POST /v1/merchants`, copie a `apiKey` da resposta e cole em
+**Authorize** — a partir daí dá para chamar todos os endpoints pela página.
+
+**Collection do Postman** em [`postman/`](postman): a jornada completa de uma
+integração — criar lojista, cobrar, o pagador recusado e depois aprovado,
+estornar em duas partes, cancelar, conferir os webhooks — com 62 asserções.
+As requisições são encadeadas: cada uma guarda nas variáveis da collection o
+que a seguinte precisa, então basta rodar a pasta inteira, em ordem.
+
+No Postman: importe os dois arquivos, escolha o ambiente *StandardPay local* e
+use o Runner. Pela linha de comando:
+
+```bash
+npx newman run postman/StandardPay.postman_collection.json \
+  -e postman/StandardPay.postman_environment.json
+```
+
+Para outro endereço, `--env-var baseUrl=https://...`.
+
 ## Integrando em 4 passos
 
 ### 1. Crie uma conta de lojista

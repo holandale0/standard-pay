@@ -13,6 +13,7 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.UriBuilder;
 import org.eclipse.microprofile.openapi.annotations.Operation;
+import org.eclipse.microprofile.openapi.annotations.security.SecurityRequirementsSet;
 import org.eclipse.microprofile.openapi.annotations.tags.Tag;
 import org.jboss.resteasy.reactive.RestForm;
 import org.leonardo.standardpay.payments.control.PaymentProcessor;
@@ -40,6 +41,7 @@ import java.util.Map;
 @Path("/checkout/{id}")
 @Tag(name = "Checkout (payer-facing pages)")
 @Produces(MediaType.TEXT_HTML)
+@SecurityRequirementsSet // o pagador não tem chave: o que protege a página é o id
 public class CheckoutResource {
 
     private static final Locale PT_BR = Locale.forLanguageTag("pt-BR");
