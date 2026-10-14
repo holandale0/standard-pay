@@ -1,0 +1,27 @@
+# Postgres para rodar o StandardPay localmente fora do modo dev.
+#
+# No `./mvnw quarkus:dev` e nos testes isto não é necessário: o Quarkus sobe
+# um Postgres descartável sozinho (Dev Services). Este é para quando se quer
+# os dados persistindo entre execuções, ou rodar o jar empacotado.
+#
+# A porta é amarrada a 127.0.0.1: o Docker escreve direto no iptables e, sem
+# isso, o banco ficaria exposto na rede mesmo com firewall ligado.
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: standardpay-postgres
+    environment:
+      POSTGRES_DB: standardpay
+      POSTGRES_USER: standardpay
+      POSTGRES_PASSWORD: standardpay
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - standardpay-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U standardpay"]
+      interval: 5s
+      retries: 10
+
+volumes:
+  standardpay-data:

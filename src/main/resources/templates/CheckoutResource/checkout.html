@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Pagamento · {page.merchantName}</title>
+  <style>
+    :root {
+      --azul: #1f4e79; --azul-claro: #e8f0f8; --texto: #1d2733; --suave: #5b6775;
+      --borda: #d6dde5; --fundo: #f4f6f9; --erro: #b3261e; --erro-fundo: #fbeceb; --ok: #1e7b34;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+           color: var(--texto); background: var(--fundo); }
+    .faixa { background: #fff4d6; color: #6b4e00; text-align: center; font-size: .85rem; padding: 8px 16px; }
+    main { max-width: 440px; margin: 0 auto; padding: 20px 16px 40px; }
+    .marca { font-weight: 800; color: var(--azul); letter-spacing: -.01em; margin-bottom: 16px; }
+    .cartao { background: #fff; border-radius: 14px; box-shadow: 0 1px 4px rgba(0,0,0,.08); padding: 20px; margin-bottom: 16px; }
+    .loja { color: var(--suave); font-size: .9rem; margin: 0; }
+    .valor { font-size: 2rem; font-weight: 800; margin: 2px 0 4px; }
+    .desc { margin: 0; color: var(--suave); }
+    h2 { font-size: 1rem; margin: 0 0 12px; }
+    label { display: block; font-size: .85rem; color: var(--suave); margin: 10px 0 4px; }
+    input { width: 100%; padding: 12px; font-size: 1rem; border: 1px solid var(--borda); border-radius: 10px; }
+    input:focus { outline: 2px solid var(--azul); border-color: transparent; }
+    .dupla { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    button { width: 100%; padding: 14px; margin-top: 16px; border: 0; border-radius: 10px; font-size: 1rem;
+             font: inherit; font-weight: 700; cursor: pointer; background: var(--azul); color: #fff; }
+    button.secundario { background: var(--azul-claro); color: var(--azul); }
+    button.link { background: none; color: var(--suave); font-weight: 400; text-decoration: underline; margin-top: 4px; }
+    .erro { background: var(--erro-fundo); color: var(--erro); border-radius: 10px; padding: 12px; margin-bottom: 4px; }
+    .testes { font-size: .82rem; color: var(--suave); margin: 12px 0 0; padding-left: 18px; }
+    .testes code { color: var(--texto); }
+    .pix { font: .8rem/1.4 ui-monospace, monospace; word-break: break-all; background: var(--fundo);
+           border-radius: 10px; padding: 10px; margin: 0; }
+    .estado { text-align: center; }
+    .estado .icone { font-size: 2.6rem; line-height: 1; }
+    .estado.ok .icone { color: var(--ok); }
+    .rodape { text-align: center; color: var(--suave); font-size: .78rem; }
+  </style>
+</head>
+<body>
+  <div class="faixa">Ambiente de simulação — nenhum valor real é cobrado.</div>
+  <main>
+    <div class="marca">StandardPay</div>
+
+    <section class="cartao">
+      <p class="loja">Pagamento para <strong>{page.merchantName}</strong></p>
+      <p class="valor">{page.amountText}</p>
+      {#if page.description}<p class="desc">{page.description}</p>{/if}
+    </section>
+
+    {#if page.state == 'pending'}
+
+      <section class="cartao">
+        <h2>Cartão de crédito</h2>
+        {#if page.error}<div class="erro" role="alert">{page.error}</div>{/if}
+        <form method="post" action="/checkout/{page.id}/card">
+          <label for="cardNumber">Número do cartão</label>
+          <input id="cardNumber" name="cardNumber" inputmode="numeric" autocomplete="cc-number"
+                 placeholder="0000 0000 0000 0000" required>
+          <label for="cardName">Nome impresso no cartão</label>
+          <input id="cardName" name="cardName" autocomplete="cc-name" required>
+          <div class="dupla">
+            <div>
+              <label for="cardExp">Validade</label>
+              <input id="cardExp" name="cardExp" placeholder="MM/AA" autocomplete="cc-exp" required>
+            </div>
+            <div>
+              <label for="cardCvc">CVV</label>
+              <input id="cardCvc" name="cardCvc" inputmode="numeric" maxlength="4" autocomplete="cc-csc" required>
+            </div>
+          </div>
+          <button type="submit">Pagar {page.amountText}</button>
+        </form>
+        <ul class="testes">
+          {#for c in page.testCards}<li><code>{c.number}</code> — {c.result}</li>{/for}
+          <li>validade futura e CVV quaisquer</li>
+        </ul>
+      </section>
+
+      <section class="cartao">
+        <h2>PIX</h2>
+        <p class="pix" id="pix">{page.pixCode}</p>
+        <button type="button" class="secundario" onclick="copiar()">Copiar código PIX</button>
+        <form method="post" action="/checkout/{page.id}/pix">
+          <button type="submit">Simular pagamento do PIX</button>
+        </form>
+      </section>
+
+      {#if page.hasReturn}
+        <form method="post" action="/checkout/{page.id}/cancel">
+          <button type="submit" class="link">Cancelar e voltar à loja</button>
+        </form>
+      {/if}
+
+    {#else if page.state == 'succeeded'}
+      <section class="cartao estado ok">
+        <div class="icone">✓</div>
+        <h2>Pagamento aprovado</h2>
+        <p class="desc">
+          {#if page.method == 'PIX'}Pago com PIX.{#else}Pago com o cartão final {page.cardLast4}.{/if}
+          Você já pode fechar esta página.
+        </p>
+      </section>
+
+    {#else if page.state == 'canceled'}
+      <section class="cartao estado">
+        <div class="icone">×</div>
+        <h2>Pagamento cancelado</h2>
+        <p class="desc">Nenhum valor foi cobrado.</p>
+      </section>
+
+    {#else}
+      <section class="cartao estado">
+        <div class="icone">⏱</div>
+        <h2>Este link de pagamento expirou</h2>
+        <p class="desc">Volte à loja e gere uma nova cobrança.</p>
+      </section>
+    {/if}
+
+    <p class="rodape">Referência {page.id}</p>
+  </main>
+  <script>
+    function copiar() {
+      navigator.clipboard?.writeText(document.getElementById('pix').textContent.trim());
+    }
+  </script>
+</body>
+</html>
