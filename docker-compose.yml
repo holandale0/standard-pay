@@ -8,16 +8,20 @@
 # isso, o banco ficaria exposto na rede mesmo com firewall ligado.
 services:
   postgres:
-    image: postgres:17-alpine
+    # A mesma versão maior que os testes usam (quarkus.datasource.devservices.image-name).
+    image: postgres:18-alpine
     container_name: standardpay-postgres
     environment:
       POSTGRES_DB: standardpay
       POSTGRES_USER: standardpay
       POSTGRES_PASSWORD: standardpay
     ports:
-      - "127.0.0.1:5433:5432"
+      - "127.0.0.1:5434:5432"
     volumes:
-      - standardpay-data:/var/lib/postgresql/data
+      # A partir da imagem 18 o PGDATA fica em /var/lib/postgresql/18/docker, e o
+      # volume vai no diretório pai; montado em .../data, como até a 17, a imagem
+      # se recusa a subir.
+      - standardpay-data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U standardpay"]
       interval: 5s

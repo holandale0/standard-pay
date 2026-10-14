@@ -50,6 +50,44 @@ escolhida, troca-se a integração, não o desenho do sistema.
 - **Expiração** de cobranças não pagas
 - Documentação interativa em `/q/swagger-ui`
 
+---
+
+## 🛠️ Stack
+
+| Categoria | Tecnologia | Versão |
+|-----------|-----------|--------|
+| Linguagem | Java | 21 |
+| Framework | Quarkus | 3.40.1 |
+| Build | Maven (wrapper incluído) | 3.9.16 |
+| API REST | Quarkus REST + Jackson | 3.40.1 / 2.21 |
+| Página de checkout | Qute (templates server-side) | 3.40.1 |
+| Persistência | Hibernate ORM + Panache | 7.4 |
+| Validação | Hibernate Validator | 9.1 |
+| Transações | Narayana JTA | 7.3 |
+| Banco de dados | PostgreSQL | 18 |
+| Driver JDBC | PostgreSQL JDBC | 42.7 |
+| Migrations | Flyway | 12.0 |
+| Agendamento | Quarkus Scheduler | 3.40.1 |
+| Documentação da API | SmallRye OpenAPI + Swagger UI | 4.3 |
+| Health check | SmallRye Health | 4.3 |
+| Testes | JUnit Jupiter + REST Assured | 6.1 / 6.0 |
+| Banco nos testes | Quarkus Dev Services (Testcontainers) | `postgres:18-alpine` |
+| Testes de arquitetura | ArchUnit | 1.5.1 |
+| Testes de API | Postman (collection v2.1) + Newman | — / 6.2 |
+| Diagramas | [archify](https://github.com/tt-a1i/archify) | 3.1 |
+| Extração dos SVG | Python | 3 (testado no 3.14) |
+| Contêineres | Docker Compose | PostgreSQL 18 |
+
+As versões das bibliotecas vêm do BOM do Quarkus — o `pom.xml` fixa só o
+Quarkus e o ArchUnit. Para conferir as versões resolvidas:
+`./mvnw dependency:list`.
+
+O PostgreSQL é o mesmo nos testes e no `docker-compose.yml`: a imagem do Dev
+Services está fixada em `application.properties`, para que uma atualização do
+Quarkus não troque a versão do banco dos testes sem ninguém perceber.
+
+---
+
 ## Rodando
 
 Precisa de Java 21 e Docker.
@@ -67,7 +105,7 @@ Para os dados persistirem entre execuções, use o Postgres do `docker-compose.y
 
 ```bash
 docker compose up -d
-STANDARDPAY_DB_URL=jdbc:postgresql://localhost:5433/standardpay \
+STANDARDPAY_DB_URL=jdbc:postgresql://localhost:5434/standardpay \
 STANDARDPAY_DB_USER=standardpay STANDARDPAY_DB_PASSWORD=standardpay \
 ./mvnw package && java -jar target/quarkus-app/quarkus-run.jar
 ```
