@@ -41,6 +41,8 @@ public class Payment extends PanacheEntityBase {
     /** Em centavos: 19500 é R$ 195,00. */
     public long amount;
 
+    @Column(length = 3)
+    @JdbcTypeCode(SqlTypes.CHAR) // char(3) na migration: código ISO 4217
     public String currency;
 
     public String description;

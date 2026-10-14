@@ -10,6 +10,8 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import org.leonardo.standardpay.merchants.entity.Merchant;
 
 import java.time.Instant;
@@ -42,6 +44,7 @@ public class WebhookDelivery extends PanacheEntityBase {
     @Column(name = "target_url")
     public String targetUrl;
 
+    @JdbcTypeCode(SqlTypes.LONG32VARCHAR) // text na migration: o corpo não tem limite de tamanho
     public String payload;
 
     @Enumerated(EnumType.STRING)

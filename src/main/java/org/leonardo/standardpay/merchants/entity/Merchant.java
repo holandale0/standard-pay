@@ -5,6 +5,8 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
 import java.util.Optional;
@@ -24,7 +26,8 @@ public class Merchant extends PanacheEntityBase {
     public String name;
 
     /** SHA-256 da chave. A chave em si só é mostrada uma vez, na criação. */
-    @Column(name = "api_key_hash")
+    @Column(name = "api_key_hash", length = 64)
+    @JdbcTypeCode(SqlTypes.CHAR) // char(64) na migration: o hash tem sempre 64 dígitos
     public String apiKeyHash;
 
     /** Para o lojista reconhecer qual chave está em uso sem ver a chave inteira. */
