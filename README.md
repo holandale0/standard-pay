@@ -14,6 +14,31 @@ o desenho do sistema.
 > Ambiente de simulação. Não há validação de cartão de verdade, não há
 > liquidação, não há dinheiro. Não use para cobrar ninguém.
 
+---
+
+## 🎯 Motivação
+
+Desenvolvo aplicações para fins comerciais, e essas aplicações tratam de
+pagamentos. Num projeto assim, o pagamento costuma ser a última peça a
+encaixar: integrar com uma plataforma de verdade exige conta, contrato,
+cadastro de empresa — e tudo isso só faz sentido depois que a proposta
+comercial é aprovada.
+
+Esperar a aprovação para só então fazer a integração não seria muito legal. O
+cliente quer ver a coisa toda funcionando antes de decidir, do pedido ao
+"pagamento aprovado", mesmo que seja só uma simulação. Uma demonstração que
+para justamente na hora de pagar deixa a pior parte para a imaginação.
+
+**Por isso surgiu a ideia de criar o StandardPay: um checkout hub que simula
+uma plataforma de pagamentos.**
+
+A aplicação integra com ele exatamente como integraria com uma plataforma
+real — cobrança, redirecionamento do pagador, webhook avisando o resultado,
+estorno. Quando a proposta for aprovada e a plataforma de verdade for
+escolhida, troca-se a integração, não o desenho do sistema.
+
+---
+
 ## O que tem
 
 - **Contas de lojista** com chave de API (`sk_test_…`) e segredo de webhook (`whsec_…`)
