@@ -34,7 +34,9 @@ Precisa de Java 21 e Docker.
 ```
 
 O Quarkus sobe um Postgres descartável sozinho (Dev Services). A API fica em
-http://localhost:8080 e a documentação em http://localhost:8080/q/swagger-ui.
+http://localhost:8080 e a documentação interativa em
+[http://localhost:8080/q/swagger-ui](http://localhost:8080/q/swagger-ui) — note
+o `/q/`, que não existe no Spring ([detalhes abaixo](#explorando-a-api)).
 
 Para os dados persistirem entre execuções, use o Postgres do `docker-compose.yml`:
 
@@ -53,9 +55,24 @@ Testes (sobem um Postgres de verdade, também pelo Docker):
 
 ## Explorando a API
 
-**Swagger UI** em `/q/swagger-ui`, com a especificação OpenAPI em `/q/openapi`.
+Com a aplicação rodando:
+
+- **Swagger UI:** [http://localhost:8080/q/swagger-ui](http://localhost:8080/q/swagger-ui)
+- **Especificação OpenAPI:** [http://localhost:8080/q/openapi](http://localhost:8080/q/openapi)
+  (YAML; acrescente `?format=json` para JSON)
+
 Crie um lojista em `POST /v1/merchants`, copie a `apiKey` da resposta e cole em
 **Authorize** — a partir daí dá para chamar todos os endpoints pela página.
+
+> **Vindo do Spring?** No Quarkus, as rotas de infraestrutura ficam todas sob
+> `/q/`. Os endereços que você conhece do springdoc e do Actuator não existem aqui:
+>
+> | | Spring Boot (springdoc / Actuator) | Quarkus |
+> |---|---|---|
+> | Swagger UI | `/swagger-ui.html` ou `/swagger-ui/index.html` | `/q/swagger-ui` |
+> | Especificação OpenAPI | `/v3/api-docs` | `/q/openapi` |
+> | Health check | `/actuator/health` | `/q/health` |
+> | Dev UI (só em modo dev) | — | `/q/dev-ui` |
 
 **Collection do Postman** em [`postman/`](postman): a jornada completa de uma
 integração — criar lojista, cobrar, o pagador recusado e depois aprovado,
