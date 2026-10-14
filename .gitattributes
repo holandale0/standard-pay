@@ -1,0 +1,10 @@
+# Os HTML dos diagramas são gerados pelo archify a partir dos .json ao lado
+# (ver diagrams/README.md). Marcados como gerados, saem da barra de linguagens
+# do GitHub — com ~3 MB, faziam o projeto aparecer como 97% HTML — e vêm
+# recolhidos nos diffs. O HTML da página de checkout, que é código escrito à
+# mão, continua contando.
+diagrams/*.html linguist-generated=true
+
+# Os SVG também são derivados (scripts/extrai_svg_dos_diagramas.py). Não entram
+# na barra de linguagens de qualquer forma; aqui é só para recolher nos diffs.
+diagrams/*.svg linguist-generated=true
