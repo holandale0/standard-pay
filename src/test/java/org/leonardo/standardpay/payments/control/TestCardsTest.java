@@ -8,25 +8,45 @@ class TestCardsTest {
 
     @Test
     void approvesTheDocumentedCards() {
-        assertTrue(TestCards.evaluate("4242 4242 4242 4242").approved());
-        assertTrue(TestCards.evaluate("5555-5555-5555-4444").approved());
+        // Act
+        var visa = TestCards.evaluate("4242 4242 4242 4242");
+        var mastercard = TestCards.evaluate("5555-5555-5555-4444");
+
+        // Assert
+        assertTrue(visa.approved());
+        assertTrue(mastercard.approved());
     }
 
     @Test
     void declinesWithAPredictableCode() {
-        assertEquals("card_declined", TestCards.evaluate("4000000000000002").code());
-        assertEquals("insufficient_funds", TestCards.evaluate("4000000000009995").code());
+        // Act
+        var declined = TestCards.evaluate("4000000000000002");
+        var noFunds = TestCards.evaluate("4000000000009995");
+
+        // Assert
+        assertEquals("card_declined", declined.code());
+        assertEquals("insufficient_funds", noFunds.code());
     }
 
     @Test
     void rejectsNumbersThatFailTheCheckDigit() {
-        var outcome = TestCards.evaluate("4242424242424241");
+        // Arrange — o último dígito trocado de 2 para 1
+        String typo = "4242424242424241";
+
+        // Act
+        var outcome = TestCards.evaluate(typo);
+
+        // Assert
         assertFalse(outcome.approved());
         assertEquals("invalid_number", outcome.code());
     }
 
     @Test
     void last4IgnoresSpacesAndDashes() {
-        assertEquals("4242", TestCards.last4("4242 4242-4242 4242"));
+        // Act
+        String last4 = TestCards.last4("4242 4242-4242 4242");
+
+        // Assert
+        assertEquals("4242", last4);
     }
 }

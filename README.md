@@ -202,6 +202,25 @@ org.leonardo.standardpay
 Em cada componente, `boundary` é a borda HTTP, `control` são as regras e
 `entity` é o que vai para o banco.
 
+As regras do BCE não são só convenção: o `ArchitectureTest`, com
+[ArchUnit](https://www.archunit.org/), quebra o build se uma delas for violada —
+`control` dependendo de `boundary`, ciclo entre componentes, entidade JPA fora
+de `entity`, código HTTP fora de `boundary`, transação aberta na borda.
+
+## Testes
+
+Cada teste é dividido em blocos marcados por comentário:
+
+```java
+// Arrange   prepara o cenário
+// Act       a única ação sob teste
+// Assert    o resultado direto da ação
+// Verify    os efeitos colaterais: o que ficou gravado, o webhook enfileirado
+```
+
+Um teste tem um `// Act` só. Quando aparece a vontade de um segundo, são dois
+testes: se ele falhar, o nome já diz qual das duas coisas quebrou.
+
 Decisões que valem saber:
 
 - **Webhooks pela tabela, não por fila de mensagens** (padrão *outbox*). O
