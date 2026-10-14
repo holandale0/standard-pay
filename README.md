@@ -101,6 +101,19 @@ http://localhost:8080 e a documentação interativa em
 [http://localhost:8080/q/swagger-ui](http://localhost:8080/q/swagger-ui) — note
 o `/q/`, que não existe no Spring ([detalhes abaixo](#explorando-a-api)).
 
+> **"Port 8080 seems to be in use by another process"?** Outro programa já ocupa
+> a 8080 — no Windows, é comum ser um serviço instalado (backup, antivírus,
+> agentes de sistema). Rode em outra porta:
+>
+> ```bash
+> PORT=8095 ./mvnw quarkus:dev                 # bash
+> $env:PORT=8095; ./mvnw quarkus:dev           # PowerShell
+> ```
+>
+> O `checkoutUrl` das cobranças acompanha a porta sozinho. Para descobrir quem
+> está na 8080: `netstat -ano | findstr :8080` no Windows, `lsof -i :8080` no
+> Linux e no macOS.
+
 Para os dados persistirem entre execuções, use o Postgres do `docker-compose.yml`:
 
 ```bash
