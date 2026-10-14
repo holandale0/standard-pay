@@ -248,28 +248,104 @@ o que fazer e uma `message` para quem está depurando:
 | `STANDARDPAY_WEBHOOKS_TIMEOUT` | `PT10S` | Quanto esperar a resposta do lojista |
 | `PORT` | `8080` | Porta HTTP |
 
-## Arquitetura
+## 🏗️ Arquitetura
 
-Um serviço só — Quarkus 3, Java 21, Postgres com migrations Flyway — organizado
-em **BCE (Boundary-Control-Entity)** por componente de negócio:
+![Arquitetura do StandardPay: o sistema do lojista cria a cobrança na API, o pagador paga na página de checkout, as regras gravam no PostgreSQL e o despachante entrega o webhook assinado de volta ao lojista](diagrams/arquitetura.svg)
 
-```
-org.leonardo.standardpay
-├── merchants   contas e autenticação por chave de API
-├── payments    cobranças, cartões de teste, expiração
-├── checkout    a página do pagador (templates Qute)
-├── refunds     estornos
-├── webhooks    fila de eventos, assinatura e entrega
-└── platform    ids, formato de erro
-```
-
-Em cada componente, `boundary` é a borda HTTP, `control` são as regras e
-`entity` é o que vai para o banco.
+Um serviço só — Quarkus 3, Java 21, PostgreSQL com migrations Flyway —
+organizado em **BCE (Boundary-Control-Entity)** por componente de negócio. Em
+cada componente, `boundary` é a borda HTTP, `control` são as regras e `entity`
+é o que vai para o banco.
 
 As regras do BCE não são só convenção: o `ArchitectureTest`, com
 [ArchUnit](https://www.archunit.org/), quebra o build se uma delas for violada —
 `control` dependendo de `boundary`, ciclo entre componentes, entidade JPA fora
 de `entity`, código HTTP fora de `boundary`, transação aberta na borda.
+
+Decisões que valem saber:
+
+- **Webhooks pela tabela, não por fila de mensagens** (padrão *outbox*). O
+  evento é gravado na mesma transação que muda o pagamento: não existe pagamento
+  aprovado cujo aviso se perdeu, nem aviso de pagamento que não foi gravado. Um
+  agendador envia os pendentes.
+- **Linha travada antes de mudar estado.** Dois cliques simultâneos em "Pagar",
+  ou dois estornos ao mesmo tempo, não passam os dois.
+- **Chave de API guardada como SHA-256.** Quem lê o banco não consegue se passar
+  pelo lojista.
+- **Valores em centavos**, como nas plataformas reais.
+
+---
+
+## 📐 Diagramas
+
+### Da cobrança ao webhook
+
+![Sequência de uma integração: o lojista cria a cobrança, redireciona o pagador, o pagador paga no checkout e volta à loja, e o despachante entrega o webhook assinado até receber 2xx](diagrams/checkout.svg)
+
+Repare na ordem do fim: o pagador costuma **voltar à loja antes** de o webhook
+chegar — o despachante passa a cada 5 segundos. Por isso a tela de volta não
+pode depender do webhook, e a URL de volta não serve de prova de pagamento:
+quem confirma é o webhook, ou a consulta à API.
+
+### Ciclo de vida de uma cobrança
+
+![Estados de uma cobrança: pendente, aprovado e totalmente estornado no caminho principal; cancelado e expirado como saídas de pendente](diagrams/pagamento.svg)
+
+Duas coisas **não** mudam o estado. Cartão recusado mantém a cobrança
+pendente, para o pagador tentar outro cartão. E estorno mantém o pagamento
+aprovado — ele foi pago; o que muda é `amountRefunded`.
+
+### Ciclo de vida de uma entrega de webhook
+
+![Estados de uma entrega de webhook: na fila, entregue com 2xx, aguardando reenvio a cada falha, e desistência após 8 tentativas, com reenvio manual pela API](diagrams/webhook.svg)
+
+Uma entrega que desistiu não está perdida: `POST /v1/webhook-deliveries/{id}/retry`
+a recoloca na fila.
+
+> Os diagramas acima são retratos estáticos. As versões **interativas** — com
+> visões guiadas, links para o código-fonte de cada componente e tema
+> claro/escuro — estão em **[diagrams/](./diagrams/)**, junto de como foram
+> geradas.
+
+---
+
+## 📂 Estrutura do projeto
+
+```
+standard-pay/
+├── src/main/java/org/leonardo/standardpay/
+│   ├── merchants/                 ← contas de lojista e autenticação por chave de API
+│   │   ├── boundary/              ← MerchantsResource · ApiKeyFilter
+│   │   ├── control/               ← MerchantRegistry · Credentials (chave e segredo)
+│   │   └── entity/                ← Merchant
+│   ├── payments/                  ← cobranças
+│   │   ├── boundary/              ← PaymentsResource
+│   │   ├── control/               ← PaymentProcessor · TestCards
+│   │   └── entity/                ← Payment · PaymentStatus · PaymentView
+│   ├── checkout/
+│   │   └── boundary/              ← CheckoutResource: a página do pagador
+│   ├── refunds/                   ← estornos: boundary · control · entity
+│   ├── webhooks/                  ← eventos para o lojista
+│   │   ├── boundary/              ← WebhookDeliveriesResource
+│   │   ├── control/               ← WebhookPublisher · WebhookDispatcher · Signatures
+│   │   └── entity/                ← WebhookDelivery (a fila outbox)
+│   └── platform/                  ← ids, formato de erro, OpenAPI — não conhece componente nenhum
+├── src/main/resources/
+│   ├── application.properties
+│   ├── db/migration/              ← migrations Flyway
+│   └── templates/                 ← página de checkout (Qute)
+├── src/main/docker/               ← Dockerfiles gerados pelo Quarkus (JVM e nativo)
+├── src/test/java/org/leonardo/standardpay/
+│   ├── ArchitectureTest.java      ← as regras do BCE, com ArchUnit
+│   ├── merchants/ · payments/ · checkout/ · refunds/ · webhooks/
+│   └── support/                   ← Api (atalhos) · WebhookSink (lojista de mentira)
+├── diagrams/                      ← diagramas archify: JSON-fonte, HTML interativo e SVG
+├── postman/                       ← collection com a jornada completa e 62 asserções
+├── scripts/                       ← extração dos SVG dos diagramas
+└── docker-compose.yml             ← PostgreSQL para rodar fora do modo dev
+```
+
+---
 
 ## Testes
 
@@ -284,18 +360,6 @@ Cada teste é dividido em blocos marcados por comentário:
 
 Um teste tem um `// Act` só. Quando aparece a vontade de um segundo, são dois
 testes: se ele falhar, o nome já diz qual das duas coisas quebrou.
-
-Decisões que valem saber:
-
-- **Webhooks pela tabela, não por fila de mensagens** (padrão *outbox*). O
-  evento é gravado na mesma transação que muda o pagamento: não existe pagamento
-  aprovado cujo aviso se perdeu, nem aviso de pagamento que não foi gravado. Um
-  agendador envia os pendentes.
-- **Linha travada antes de mudar estado.** Dois cliques simultâneos em "Pagar",
-  ou dois estornos ao mesmo tempo, não passam os dois.
-- **Chave de API guardada como SHA-256.** Quem lê o banco não consegue se passar
-  pelo lojista.
-- **Valores em centavos**, como nas plataformas reais.
 
 ## Próximos passos
 

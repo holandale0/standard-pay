@@ -43,3 +43,9 @@ nb-configuration.xml
 /.quarkus/cli/plugins/
 # TLS Certificates
 .certs/
+
+# Recibos de verificacao do archify: evidencia local, nao fonte
+diagrams/*.delivery.json
+diagrams/*.finalize.json
+diagrams/*.finalize-summary.json
+diagrams/*.browser-check.json
