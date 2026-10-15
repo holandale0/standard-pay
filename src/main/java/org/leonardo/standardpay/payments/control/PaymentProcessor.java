@@ -4,10 +4,13 @@ import io.quarkus.logging.Log;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.scheduler.Scheduled;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.event.Event;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.leonardo.standardpay.merchants.entity.Merchant;
+import org.leonardo.standardpay.payments.control.PaymentTelemetry.PaymentEvent;
+import org.leonardo.standardpay.payments.control.PaymentTelemetry.PaymentEvent.Kind;
 import org.leonardo.standardpay.payments.entity.Payment;
 import org.leonardo.standardpay.payments.entity.PaymentStatus;
 import org.leonardo.standardpay.payments.entity.PaymentView;
@@ -43,6 +46,10 @@ public class PaymentProcessor {
 
     @Inject
     WebhookPublisher webhooks;
+
+    /** Registrados só depois do commit — ver PaymentTelemetry. */
+    @Inject
+    Event<PaymentEvent> events;
 
     @ConfigProperty(name = "standardpay.public-url")
     String publicUrl;
@@ -82,6 +89,7 @@ public class PaymentProcessor {
         // aparecer dentro do método, como PersistenceException, para o recurso
         // tratar a corrida entre duas requisições com a mesma chave.
         p.persistAndFlush();
+        events.fire(PaymentEvent.of(Kind.CREATED, p, null));
         return p;
     }
 
@@ -100,7 +108,7 @@ public class PaymentProcessor {
     public Payment cancelByMerchant(String merchantId, String paymentId) {
         Payment p = locked(paymentId);
         if (!p.merchant.id.equals(merchantId)) throw ApiException.notFound("payment", paymentId);
-        return cancel(p);
+        return cancel(p, "merchant");
     }
 
     // ── Pagador (página de checkout) ──
@@ -122,9 +130,11 @@ public class PaymentProcessor {
         if (outcome.approved()) {
             p.succeed(Payment.Method.CARD, last4, now);
             webhooks.publish(p.merchant, "payment.succeeded", view(p));
+            events.fire(PaymentEvent.of(Kind.SUCCEEDED, p, null));
         } else {
             p.decline(outcome.code(), outcome.message(), last4, now);
             webhooks.publish(p.merchant, "payment.failed", view(p));
+            events.fire(PaymentEvent.of(Kind.DECLINED, p, outcome.code()));
         }
         return new Attempt(p, outcome);
     }
@@ -140,13 +150,14 @@ public class PaymentProcessor {
         if (!p.isPayable(now)) return p;
         p.succeed(Payment.Method.PIX, null, now);
         webhooks.publish(p.merchant, "payment.succeeded", view(p));
+        events.fire(PaymentEvent.of(Kind.SUCCEEDED, p, null));
         return p;
     }
 
     @Transactional
     public Payment cancelByPayer(String paymentId) {
         Payment p = locked(paymentId);
-        return p.status == PaymentStatus.PENDING ? cancel(p) : p;
+        return p.status == PaymentStatus.PENDING ? cancel(p, "payer") : p;
     }
 
     /** Quem abre a página depois do prazo vê "expirado" na hora, sem esperar a varredura. */
@@ -157,6 +168,7 @@ public class PaymentProcessor {
         if (p.status == PaymentStatus.PENDING && !now.isBefore(p.expiresAt)) {
             p.finish(PaymentStatus.EXPIRED, now);
             webhooks.publish(p.merchant, "payment.expired", view(p));
+            events.fire(PaymentEvent.of(Kind.EXPIRED, p, null));
         }
         return p;
     }
@@ -191,7 +203,8 @@ public class PaymentProcessor {
 
     // ── Internos ──
 
-    private Payment cancel(Payment p) {
+    /** @param by quem cancelou — "merchant" ou "payer" — para o log e a métrica */
+    private Payment cancel(Payment p, String by) {
         if (p.status == PaymentStatus.CANCELED) return p;
         if (p.status != PaymentStatus.PENDING) {
             throw ApiException.conflict("payment_not_cancelable",
@@ -199,6 +212,7 @@ public class PaymentProcessor {
         }
         p.finish(PaymentStatus.CANCELED, Instant.now());
         webhooks.publish(p.merchant, "payment.canceled", view(p));
+        events.fire(PaymentEvent.of(Kind.CANCELED, p, by));
         return p;
     }
 

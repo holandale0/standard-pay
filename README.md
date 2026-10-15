@@ -49,6 +49,7 @@ escolhida, troca-se a integração, não o desenho do sistema.
 - **Estornos** totais e parciais
 - **Expiração** de cobranças não pagas
 - Documentação interativa em `/q/swagger-ui`
+- **Observabilidade**: logs correlacionados por requisição, métricas de negócio e traces que seguem até o webhook do lojista — com um Grafana pronto ([detalhes abaixo](#-observabilidade))
 
 ---
 
@@ -70,16 +71,20 @@ escolhida, troca-se a integração, não o desenho do sistema.
 | Agendamento | Quarkus Scheduler | 3.40.1 |
 | Documentação da API | SmallRye OpenAPI + Swagger UI | 4.3 |
 | Health check | SmallRye Health | 4.3 |
+| Traces e logs | OpenTelemetry (OTLP sobre HTTP) | 1.62 |
+| Métricas | Micrometer — registros Prometheus e OTLP | 1.17 |
+| Logs em JSON (produção) | Quarkus Logging JSON | 3.40.1 |
+| Grafana local | `grafana/otel-lgtm` (Grafana, Prometheus, Tempo, Loki) | 0.36.0 |
 | Testes | JUnit Jupiter + REST Assured | 6.1 / 6.0 |
 | Banco nos testes | Quarkus Dev Services (Testcontainers) | `postgres:18-alpine` |
 | Testes de arquitetura | ArchUnit | 1.5.1 |
 | Testes de API | Postman (collection v2.1) + Newman | — / 6.2 |
 | Diagramas | [archify](https://github.com/tt-a1i/archify) | 3.1 |
 | Extração dos SVG | Python | 3 (testado no 3.14) |
-| Contêineres | Docker Compose | PostgreSQL 18 |
+| Contêineres | Docker Compose | PostgreSQL 18 · otel-lgtm 0.36.0 |
 
 As versões das bibliotecas vêm do BOM do Quarkus — o `pom.xml` fixa só o
-Quarkus e o ArchUnit. Para conferir as versões resolvidas:
+Quarkus e o ArchUnit (o `micrometer-registry-otlp` também vem do BOM). Para conferir as versões resolvidas:
 `./mvnw dependency:list`.
 
 O PostgreSQL é o mesmo nos testes e no `docker-compose.yml`: a imagem do Dev
@@ -284,8 +289,11 @@ Todo erro sai no mesmo formato, com um `code` estável para o programa decidir
 o que fazer e uma `message` para quem está depurando:
 
 ```json
-{ "error": { "code": "amount_too_large", "message": "Refund amount 20000 exceeds the refundable 19500 (amounts are in cents)." } }
+{ "error": { "code": "amount_too_large", "message": "Refund amount 20000 exceeds the refundable 19500 (amounts are in cents).", "requestId": "req_4kVt0Wb4cRMyx2RkVk7aB9qE" } }
 ```
+
+O `requestId` é o mesmo do cabeçalho `X-Request-Id` da resposta, e aparece em
+toda linha de log daquela requisição — é o que o lojista manda para o suporte.
 
 ## Configuração
 
@@ -298,6 +306,89 @@ o que fazer e uma `message` para quem está depurando:
 | `STANDARDPAY_WEBHOOKS_MAX_ATTEMPTS` | `8` | Tentativas antes de desistir |
 | `STANDARDPAY_WEBHOOKS_TIMEOUT` | `PT10S` | Quanto esperar a resposta do lojista |
 | `PORT` | `8080` | Porta HTTP |
+| `QUARKUS_OTEL_SDK_DISABLED` | `true` | `false` liga a telemetria ([Observabilidade](#-observabilidade)) |
+| `STANDARDPAY_OTEL_ENDPOINT` | `http://localhost:4318` | Coletor OpenTelemetry (OTLP sobre HTTP) |
+
+---
+
+## 🔭 Observabilidade
+
+Três sinais, ligados entre si: cada linha de log diz a que requisição e a que
+trace pertence; cada trace mostra as consultas ao banco que a requisição fez; e
+o trace continua no lojista, pelo webhook.
+
+![Painel do StandardPay no Grafana](observabilidade/painel.png)
+
+### Subindo o Grafana
+
+```bash
+docker compose --profile observabilidade up -d          # Grafana em http://localhost:3001 (admin / admin)
+QUARKUS_OTEL_SDK_DISABLED=false ./mvnw quarkus:dev      # bash
+$env:QUARKUS_OTEL_SDK_DISABLED="false"; ./mvnw quarkus:dev   # PowerShell
+```
+
+O contêiner `grafana/otel-lgtm` reúne Grafana, Prometheus (métricas), Tempo
+(traces) e Loki (logs), e recebe os três por OTLP na porta 4318. O painel
+**StandardPay** já vem carregado, na pasta de mesmo nome.
+
+> **Na primeira vez, o Grafana leva alguns minutos para responder** — ele
+> prepara o próprio banco. Os dados ficam no volume `standardpay-observabilidade`,
+> e as subidas seguintes são rápidas.
+
+A telemetria vem desligada: sem coletor no ar, o exportador reclamaria no log a
+cada poucos segundos. O Quarkus também subiria um Grafana próprio a cada
+`quarkus:dev` — isso está desligado (`quarkus.observability.enabled=false`); o
+Grafana é escolha explícita, pelo perfil do compose.
+
+### Logs
+
+```
+14:02:11.418 INFO  [o.l.s.p.c.PaymentTelemetry] [req=req_8f2K… trace=4ffbf63e…] Payment pay_jWZL… succeeded via card: 19500 BRL (cents)
+14:02:16.530 WARN  [o.l.s.w.c.WebhookTelemetry] [req= trace=c935daeb…] Webhook evt_PUwt… (payment.succeeded) attempt 2 failed: ConnectException; next attempt at …
+```
+
+- Toda requisição ganha um `X-Request-Id`, devolvido na resposta. Se o cliente
+  mandar um, ele é mantido — desde que seja curto e só tenha letras, números e
+  `._:-`; senão, é trocado, para ninguém forjar linhas no log.
+- Depois da autenticação, o `merchantId` também entra no contexto do log.
+- Eventos de negócio — cobrança criada, paga, recusada, cancelada, expirada;
+  estorno; lojista cadastrado; troca de segredo — saem em `INFO`. Webhook que vai
+  ser reenviado sai em `WARN`; o que esgotou as tentativas, em `ERROR`.
+- Chaves de API e segredos nunca vão para o log — nem a chave rejeitada.
+- Em produção (`%prod`), o console sai em JSON, uma linha por evento.
+
+### Métricas
+
+| Métrica (Prometheus) | Tipo | Rótulos |
+|---|---|---|
+| `standardpay_payments_created_total` | contador | `currency` |
+| `standardpay_payments_succeeded_total` | contador | `method` (`card`, `pix`), `currency` |
+| `standardpay_payments_succeeded_amount_cents_total` | contador (centavos) | `currency` |
+| `standardpay_payments_declined_total` | contador | `reason` (`insufficient_funds`, `card_declined`…) |
+| `standardpay_payments_canceled_total` | contador | `by` (`merchant`, `payer`) |
+| `standardpay_payments_expired_total` | contador | — |
+| `standardpay_refunds_total` | contador | `type` (`full`, `partial`) |
+| `standardpay_refunds_amount_cents_total` | contador (centavos) | `currency` |
+| `standardpay_webhooks_delivery_milliseconds` | histograma | `event`, `outcome` (`delivered`, `retry`, `gave_up`) |
+| `standardpay_webhooks_pending` | medidor | — |
+| `http_server_requests_milliseconds` | histograma | `method`, `uri`, `status` |
+
+Também ficam em [`/q/metrics`](http://localhost:8080/q/metrics), no formato do
+Prometheus, mesmo com a telemetria desligada (lá, com os nomes em segundos).
+
+- As métricas de negócio são registradas **depois do commit**: uma transação
+  desfeita não conta como cobrança criada.
+- Nenhuma tem o lojista como rótulo — cada lojista viraria uma série nova, sem
+  limite. Para olhar um lojista, filtre os logs pelo `merchantId`.
+- Os histogramas têm faixas fixas, de 5 ms a 10 s, para o p95 sair do Prometheus.
+
+### Traces
+
+- Cada requisição vira um trace, com uma etapa por consulta ao banco.
+- As rodadas do agendador (envio de webhooks, expiração) também.
+- O envio de um webhook é uma etapa própria (`POST webhook payment.succeeded`), e
+  leva o cabeçalho [`traceparent`](https://www.w3.org/TR/trace-context/) ao
+  lojista: se o sistema dele também usar OpenTelemetry, o trace continua lá.
 
 ## 🏗️ Arquitetura
 
@@ -380,7 +471,7 @@ standard-pay/
 │   │   ├── boundary/              ← WebhookDeliveriesResource
 │   │   ├── control/               ← WebhookPublisher · WebhookDispatcher · Signatures
 │   │   └── entity/                ← WebhookDelivery (a fila outbox)
-│   └── platform/                  ← ids, formato de erro, OpenAPI — não conhece componente nenhum
+│   └── platform/                  ← ids, formato de erro, X-Request-Id, OpenAPI, métricas — não conhece componente nenhum
 ├── src/main/resources/
 │   ├── application.properties
 │   ├── db/migration/              ← migrations Flyway
@@ -388,12 +479,14 @@ standard-pay/
 ├── src/main/docker/               ← Dockerfiles gerados pelo Quarkus (JVM e nativo)
 ├── src/test/java/org/leonardo/standardpay/
 │   ├── ArchitectureTest.java      ← as regras do BCE, com ArchUnit
+│   ├── ObservabilityTest.java     ← X-Request-Id, métricas e traceparent
 │   ├── merchants/ · payments/ · checkout/ · refunds/ · webhooks/
 │   └── support/                   ← Api (atalhos) · WebhookSink (lojista de mentira)
 ├── diagrams/                      ← diagramas archify: JSON-fonte, HTML interativo e SVG
+├── observabilidade/               ← painel do Grafana, carregado pelo docker-compose
 ├── postman/                       ← collection com a jornada completa e 62 asserções
 ├── scripts/                       ← extração dos SVG dos diagramas
-└── docker-compose.yml             ← PostgreSQL para rodar fora do modo dev
+└── docker-compose.yml             ← PostgreSQL; e, no perfil observabilidade, o Grafana
 ```
 
 ---

@@ -1,5 +1,6 @@
 package org.leonardo.standardpay.merchants.boundary;
 
+import io.quarkus.logging.Log;
 import jakarta.annotation.Priority;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.Priorities;
@@ -9,6 +10,7 @@ import jakarta.ws.rs.core.HttpHeaders;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.ext.Provider;
+import org.jboss.logging.MDC;
 import org.leonardo.standardpay.merchants.control.MerchantRegistry;
 import org.leonardo.standardpay.platform.ErrorMappers.ErrorBody;
 
@@ -42,14 +44,23 @@ public class ApiKeyFilter implements ContainerRequestFilter {
         String apiKey = header != null && header.startsWith(BEARER) ? header.substring(BEARER.length()).trim() : null;
 
         registry.authenticate(apiKey).ifPresentOrElse(
-                authenticated::set,
-                () -> ctx.abortWith(Response.status(401)
-                        .type(MediaType.APPLICATION_JSON)
-                        .header(HttpHeaders.WWW_AUTHENTICATE, "Bearer")
-                        .entity(new ErrorBody(new ErrorBody.Error("invalid_api_key",
-                                apiKey == null
-                                        ? "Missing API key. Send 'Authorization: Bearer sk_test_...'."
-                                        : "Invalid API key.")))
-                        .build()));
+                merchant -> {
+                    authenticated.set(merchant);
+                    // Daqui em diante, toda linha de log desta requisição diz de quem ela é.
+                    MDC.put("merchantId", merchant.id);
+                },
+                () -> {
+                    // Nunca a chave: nem inteira, nem em parte. Basta saber que houve tentativa.
+                    Log.warnf("Rejected request to %s %s: %s API key", ctx.getMethod(), "/" + path,
+                            apiKey == null ? "missing" : "invalid");
+                    ctx.abortWith(Response.status(401)
+                            .type(MediaType.APPLICATION_JSON)
+                            .header(HttpHeaders.WWW_AUTHENTICATE, "Bearer")
+                            .entity(ErrorBody.of("invalid_api_key",
+                                    apiKey == null
+                                            ? "Missing API key. Send 'Authorization: Bearer sk_test_...'."
+                                            : "Invalid API key."))
+                            .build());
+                });
     }
 }

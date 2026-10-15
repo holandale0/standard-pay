@@ -1,5 +1,6 @@
 package org.leonardo.standardpay.merchants.boundary;
 
+import io.quarkus.logging.Log;
 import jakarta.inject.Inject;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -59,6 +60,8 @@ public class MerchantsResource {
     public Response create(@Valid @NotNull CreateMerchantRequest request) {
         var r = registry.register(request.name(), request.webhookUrl());
         var m = r.merchant();
+        // Depois do commit (register é transacional). Nunca a chave nem o segredo.
+        Log.infof("Merchant %s registered: %s, webhooks %s", m.id, m.name, m.webhookUrl == null ? "off" : "on");
         return Response.status(201)
                 .entity(new MerchantCreated(m.id, m.name, r.apiKey(), m.webhookUrl, m.webhookSecret, m.createdAt))
                 .build();
@@ -82,6 +85,8 @@ public class MerchantsResource {
     @Path("/me/webhook-secret")
     @Operation(summary = "Rotate the webhook signing secret", description = "The previous secret stops working immediately.")
     public MerchantView rotateWebhookSecret() {
-        return MerchantView.of(registry.rotateWebhookSecret(authenticated.id()));
+        var m = registry.rotateWebhookSecret(authenticated.id());
+        Log.infof("Merchant %s rotated its webhook secret", m.id);
+        return MerchantView.of(m);
     }
 }

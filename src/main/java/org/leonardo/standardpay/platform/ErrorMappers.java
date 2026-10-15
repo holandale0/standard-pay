@@ -1,5 +1,6 @@
 package org.leonardo.standardpay.platform;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import jakarta.validation.ConstraintViolationException;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
@@ -10,15 +11,21 @@ import java.util.stream.Collectors;
 /**
  * Todo erro da API sai no mesmo formato:
  *
- * <pre>{ "error": { "code": "amount_too_small", "message": "..." } }</pre>
+ * <pre>{ "error": { "code": "amount_too_small", "message": "...", "requestId": "req_..." } }</pre>
  *
  * Um formato só é o que permite ao lojista tratar erros de forma genérica, em
- * vez de um caso por endpoint.
+ * vez de um caso por endpoint. O requestId é o que ele informa ao suporte: leva
+ * direto às linhas de log daquela requisição.
  */
 public class ErrorMappers {
 
     public record ErrorBody(Error error) {
-        public record Error(String code, String message) {
+        @JsonInclude(JsonInclude.Include.NON_NULL)
+        public record Error(String code, String message, String requestId) {
+        }
+
+        public static ErrorBody of(String code, String message) {
+            return new ErrorBody(new Error(code, message, RequestIds.current()));
         }
     }
 
@@ -46,7 +53,7 @@ public class ErrorMappers {
     private static Response json(int status, String code, String message) {
         return Response.status(status)
                 .type(MediaType.APPLICATION_JSON)
-                .entity(new ErrorBody(new ErrorBody.Error(code, message)))
+                .entity(ErrorBody.of(code, message))
                 .build();
     }
 }

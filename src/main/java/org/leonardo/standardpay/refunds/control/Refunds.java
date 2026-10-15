@@ -1,6 +1,7 @@
 package org.leonardo.standardpay.refunds.control;
 
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.event.Event;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 import org.leonardo.standardpay.payments.control.PaymentProcessor;
@@ -9,6 +10,7 @@ import org.leonardo.standardpay.payments.entity.PaymentStatus;
 import org.leonardo.standardpay.payments.entity.PaymentView;
 import org.leonardo.standardpay.platform.ApiException;
 import org.leonardo.standardpay.platform.Ids;
+import org.leonardo.standardpay.refunds.control.RefundTelemetry.RefundEvent;
 import org.leonardo.standardpay.refunds.entity.Refund;
 import org.leonardo.standardpay.webhooks.control.WebhookPublisher;
 
@@ -28,6 +30,9 @@ public class Refunds {
 
     @Inject
     WebhookPublisher webhooks;
+
+    @Inject
+    Event<RefundEvent> events;
 
     /**
      * Estorna {@code amount} centavos; sem valor, estorna tudo o que resta.
@@ -70,6 +75,7 @@ public class Refunds {
 
         var view = view(r, p);
         webhooks.publish(p.merchant, "refund.succeeded", view);
+        events.fire(new RefundEvent(r.id, p.id, value, p.currency, p.refundable() == 0));
         return view;
     }
 

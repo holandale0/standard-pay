@@ -73,6 +73,11 @@ public class WebhookDelivery extends PanacheEntityBase {
                 .list();
     }
 
+    /** Na fila, vencidas ou esperando a próxima tentativa — o que ainda vai ser enviado. */
+    public static long countWaiting() {
+        return count("status", Status.PENDING);
+    }
+
     public static List<WebhookDelivery> recentOf(String merchantId, int limit) {
         return find("merchant.id = ?1 order by createdAt desc", merchantId).page(0, limit).list();
     }

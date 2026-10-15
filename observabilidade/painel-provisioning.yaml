@@ -1,0 +1,10 @@
+# Carrega no Grafana os painéis de observabilidade/paineis/ ao subir o contêiner.
+apiVersion: 1
+
+providers:
+  - name: StandardPay
+    folder: StandardPay
+    type: file
+    options:
+      path: /otel-lgtm/grafana/conf/provisioning/dashboards/standardpay
+      foldersFromFilesStructure: false

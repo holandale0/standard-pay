@@ -18,16 +18,17 @@ import java.util.concurrent.CopyOnWriteArrayList;
 @Path("/test-sink")
 public class WebhookSink {
 
-    public record Received(String signature, String body) {
+    public record Received(String signature, String traceparent, String body) {
     }
 
     public static final List<Received> RECEIVED = new CopyOnWriteArrayList<>();
 
     @POST
     public Response receive(@HeaderParam("StandardPay-Signature") String signature,
+                            @HeaderParam("traceparent") String traceparent,
                             @QueryParam("status") Integer status,
                             String body) {
-        RECEIVED.add(new Received(signature, body));
+        RECEIVED.add(new Received(signature, traceparent, body));
         return Response.status(status == null ? 200 : status).build();
     }
 }

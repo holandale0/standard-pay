@@ -27,5 +27,23 @@ services:
       interval: 5s
       retries: 10
 
+  # Grafana com Prometheus, Tempo e Loki num contêiner só, recebendo os três
+  # sinais por OTLP. Só sobe com o perfil: docker compose --profile observabilidade up -d
+  # Grafana na 3001, e não na 3000 padrão, que costuma estar com outro serviço local.
+  observabilidade:
+    image: grafana/otel-lgtm:0.36.0
+    container_name: standardpay-observabilidade
+    profiles: ["observabilidade"]
+    ports:
+      - "127.0.0.1:3001:3000"   # Grafana (admin / admin)
+      - "127.0.0.1:4318:4318"   # OTLP sobre HTTP: traces, métricas e logs
+    volumes:
+      - ./observabilidade/painel-provisioning.yaml:/otel-lgtm/grafana/conf/provisioning/dashboards/standardpay.yaml:ro
+      - ./observabilidade/paineis:/otel-lgtm/grafana/conf/provisioning/dashboards/standardpay:ro
+      # O Grafana cria o próprio banco na primeira subida, e isso leva minutos. Com
+      # o volume, só na primeira vez; e a telemetria sobrevive a reinícios.
+      - standardpay-observabilidade:/data
+
 volumes:
   standardpay-data:
+  standardpay-observabilidade:

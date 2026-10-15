@@ -1,0 +1,155 @@
+{
+  "uid": "standardpay",
+  "title": "StandardPay",
+  "description": "Cobranças, estornos, webhooks e a API — métricas, logs e traces do StandardPay.",
+  "tags": ["standardpay"],
+  "timezone": "browser",
+  "refresh": "10s",
+  "time": { "from": "now-1h", "to": "now" },
+  "schemaVersion": 39,
+  "editable": true,
+  "panels": [
+    {
+      "type": "row", "title": "Cobranças", "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }
+    },
+    {
+      "type": "stat", "title": "Criadas",
+      "description": "Cobranças criadas no período. Arredondado: o Prometheus extrapola o aumento até as bordas do intervalo.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "none", "graphMode": "none" },
+      "targets": [{ "refId": "A", "expr": "round(sum(increase(standardpay_payments_created_total[$__range])))", "instant": true }]
+    },
+    {
+      "type": "stat", "title": "Aprovadas",
+      "description": "Cobranças pagas no período, por cartão ou PIX.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 1 },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none" },
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "green" } }, "overrides": [] },
+      "targets": [{ "refId": "A", "expr": "round(sum(increase(standardpay_payments_succeeded_total[$__range])))", "instant": true }]
+    },
+    {
+      "type": "stat", "title": "Volume aprovado",
+      "description": "Soma dos valores aprovados no período, em reais. Os valores são registrados em centavos.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 1 },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "none", "graphMode": "none" },
+      "fieldConfig": { "defaults": { "unit": "currencyBRL", "decimals": 2 }, "overrides": [] },
+      "targets": [{ "refId": "A", "expr": "sum(increase(standardpay_payments_succeeded_amount_cents_total{currency=\"BRL\"}[$__range])) / 100", "instant": true }]
+    },
+    {
+      "type": "stat", "title": "Taxa de recusa",
+      "description": "Recusas sobre tentativas de pagamento (aprovadas + recusadas) no período.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 1 },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "graphMode": "none" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit", "decimals": 1,
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null }, { "color": "orange", "value": 0.2 }, { "color": "red", "value": 0.5 }
+          ] }
+        },
+        "overrides": []
+      },
+      "targets": [{ "refId": "A", "instant": true, "expr": "sum(increase(standardpay_payments_declined_total[$__range])) / (sum(increase(standardpay_payments_declined_total[$__range])) + sum(increase(standardpay_payments_succeeded_total[$__range])))" }]
+    },
+    {
+      "type": "timeseries", "title": "Aprovações por método",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 5 },
+      "fieldConfig": { "defaults": { "unit": "/min", "min": 0, "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 25, "stacking": { "mode": "normal" } } }, "overrides": [] },
+      "targets": [{ "refId": "A", "expr": "sum by (method) (rate(standardpay_payments_succeeded_total[$__rate_interval])) * 60", "legendFormat": "{{method}}" }]
+    },
+    {
+      "type": "timeseries", "title": "Recusas por motivo",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 5 },
+      "fieldConfig": { "defaults": { "unit": "/min", "min": 0, "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 25, "stacking": { "mode": "normal" } } }, "overrides": [] },
+      "targets": [{ "refId": "A", "expr": "sum by (reason) (rate(standardpay_payments_declined_total[$__rate_interval])) * 60", "legendFormat": "{{reason}}" }]
+    },
+    {
+      "type": "timeseries", "title": "Canceladas e expiradas",
+      "description": "Canceladas pelo lojista ou pelo pagador; expiradas sem pagamento.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 5 },
+      "fieldConfig": { "defaults": { "unit": "/min", "min": 0, "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 25, "stacking": { "mode": "normal" } } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum by (by) (rate(standardpay_payments_canceled_total[$__rate_interval])) * 60", "legendFormat": "cancelada pelo {{by}}" },
+        { "refId": "B", "expr": "sum(rate(standardpay_payments_expired_total[$__rate_interval])) * 60", "legendFormat": "expirada" }
+      ]
+    },
+    {
+      "type": "row", "title": "Estornos e webhooks", "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 13 }
+    },
+    {
+      "type": "timeseries", "title": "Estornos",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 14 },
+      "fieldConfig": { "defaults": { "unit": "/min", "min": 0, "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 25, "stacking": { "mode": "normal" } } }, "overrides": [] },
+      "targets": [{ "refId": "A", "expr": "sum by (type) (rate(standardpay_refunds_total[$__rate_interval])) * 60", "legendFormat": "{{type}}" }]
+    },
+    {
+      "type": "timeseries", "title": "Entregas de webhook por resultado",
+      "description": "delivered: o lojista respondeu 2xx. retry: falhou e será reenviado. gave_up: esgotou as tentativas.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 14 },
+      "fieldConfig": {
+        "defaults": { "unit": "/min", "min": 0, "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 25, "stacking": { "mode": "normal" } } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "delivered" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } }] },
+          { "matcher": { "id": "byName", "options": "retry" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "orange" } }] },
+          { "matcher": { "id": "byName", "options": "gave_up" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }] }
+        ]
+      },
+      "targets": [{ "refId": "A", "expr": "sum by (outcome) (rate(standardpay_webhooks_delivery_milliseconds_count[$__rate_interval])) * 60", "legendFormat": "{{outcome}}" }]
+    },
+    {
+      "type": "timeseries", "title": "Webhooks na fila",
+      "description": "Entregas aguardando envio ou reenvio. Crescendo sem parar: algum lojista está fora do ar.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 14 },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] },
+      "targets": [{ "refId": "A", "expr": "sum(standardpay_webhooks_pending)", "legendFormat": "pendentes" }]
+    },
+    {
+      "type": "row", "title": "API", "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 22 }
+    },
+    {
+      "type": "timeseries", "title": "Requisições por status",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 23 },
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "targets": [{ "refId": "A", "expr": "sum by (status) (rate(http_server_requests_milliseconds_count{uri!~\"/q/.*\"}[$__rate_interval]))", "legendFormat": "{{status}}" }]
+    },
+    {
+      "type": "timeseries", "title": "Latência p95 por rota",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 23 },
+      "fieldConfig": { "defaults": { "unit": "ms" }, "overrides": [] },
+      "targets": [{ "refId": "A", "expr": "histogram_quantile(0.95, sum by (le, method, uri) (rate(http_server_requests_milliseconds_bucket{uri!~\"/q/.*\"}[$__rate_interval])))", "legendFormat": "{{method}} {{uri}}" }]
+    },
+    {
+      "type": "row", "title": "Logs e traces", "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 31 }
+    },
+    {
+      "type": "logs", "title": "Logs",
+      "description": "Cada linha traz o trace a que pertence: clique nela e abra o trace no Tempo.",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 32 },
+      "options": { "showTime": true, "wrapLogMessage": true, "sortOrder": "Descending", "enableLogDetails": true },
+      "targets": [{ "refId": "A", "expr": "{service_name=\"standard-pay\"}" }]
+    },
+    {
+      "type": "table", "title": "Traces recentes",
+      "datasource": { "type": "tempo", "uid": "tempo" },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 42 },
+      "targets": [{ "refId": "A", "queryType": "traceql", "query": "{resource.service.name=\"standard-pay\" && kind=server}", "limit": 30, "tableType": "traces" }]
+    }
+  ]
+}
