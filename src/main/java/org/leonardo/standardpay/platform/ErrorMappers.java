@@ -1,7 +1,10 @@
 package org.leonardo.standardpay.platform;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.core.exc.StreamReadException;
+import com.fasterxml.jackson.databind.exc.MismatchedInputException;
 import jakarta.validation.ConstraintViolationException;
+import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import org.jboss.resteasy.reactive.server.ServerExceptionMapper;
@@ -42,6 +45,29 @@ public class ErrorMappers {
                 .sorted()
                 .collect(Collectors.joining("; "));
         return json(400, "invalid_request", message);
+    }
+
+    /**
+     * Corpo que nem é JSON — um texto cortado, ou fora de UTF-8. O Quarkus
+     * embrulha o erro do Jackson numa WebApplicationException 400 sem corpo;
+     * aqui ela ganha o formato padrão. As outras seguem como vieram.
+     */
+    @ServerExceptionMapper
+    public Response webApplication(WebApplicationException e) {
+        if (e.getCause() instanceof StreamReadException) {
+            return json(400, "invalid_json", "The request body is not valid JSON (it must be UTF-8).");
+        }
+        return e.getResponse();
+    }
+
+    /** JSON válido com o tipo errado num campo: "amount": "abc". */
+    @ServerExceptionMapper
+    public Response mismatched(MismatchedInputException e) {
+        String field = e.getPath().stream()
+                .map(r -> r.getFieldName() != null ? r.getFieldName() : "[" + r.getIndex() + "]")
+                .collect(Collectors.joining(".")).replace(".[", "[");
+        return json(400, "invalid_request",
+                (field.isEmpty() ? "The request body" : field) + " has the wrong type.");
     }
 
     /** "create.request.amount" vira "amount" — o caminho interno não diz nada ao lojista. */

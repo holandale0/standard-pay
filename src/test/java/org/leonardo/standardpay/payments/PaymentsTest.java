@@ -161,4 +161,30 @@ class PaymentsTest {
                 .body("size()", equalTo(1))
                 .body("[0].id", equalTo(canceled));
     }
+
+    @Test
+    void malformedJsonGetsTheStandardErrorBody() {
+        // Arrange
+        var m = Api.newMerchant();
+
+        // Act — corpo cortado no meio
+        var response = Api.as(m).body("{\"amount\": ").post("/v1/payments");
+
+        // Assert
+        response.then().statusCode(400).body("error.code", equalTo("invalid_json"));
+    }
+
+    @Test
+    void wrongTypeSaysWhichField() {
+        // Arrange
+        var m = Api.newMerchant();
+
+        // Act
+        var response = Api.as(m).body("{\"amount\": \"abc\"}").post("/v1/payments");
+
+        // Assert
+        response.then().statusCode(400)
+                .body("error.code", equalTo("invalid_request"))
+                .body("error.message", startsWith("amount"));
+    }
 }
