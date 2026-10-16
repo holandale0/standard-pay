@@ -204,7 +204,8 @@ Crie um lojista em `POST /v1/merchants`, copie a `apiKey` da resposta e cole em
 
 **Collection do Postman** em [`postman/`](postman): a jornada completa de uma
 integração — criar lojista, cobrar, o pagador recusado e depois aprovado,
-estornar em duas partes, cancelar, conferir os webhooks — com 62 asserções.
+estornar em duas partes, ver um estorno ficar pendente, cancelar, conferir os
+webhooks — com 70 asserções.
 As requisições são encadeadas: cada uma guarda nas variáveis da collection o
 que a seguinte precisa, então basta rodar a pasta inteira, em ordem.
 
@@ -296,7 +297,9 @@ repetições.
 | `payment.failed` | Uma tentativa de cartão foi recusada (a cobrança continua aberta) |
 | `payment.canceled` | O lojista ou o pagador cancelou |
 | `payment.expired` | Ninguém pagou dentro do prazo (30 min por padrão) |
-| `refund.succeeded` | Um estorno foi feito |
+| `refund.succeeded` | Um estorno foi concluído |
+| `refund.pending` | Um estorno foi pedido e ainda não concluiu ([detalhes](#estornos-que-levam-tempo-e-que-falham)) |
+| `refund.failed` | Um estorno pendente falhou; o valor pode ser estornado de novo |
 
 ## Cartões de teste
 
@@ -308,6 +311,8 @@ repetições.
 | `4000 0000 0000 9995` | Saldo insuficiente (`insufficient_funds`) |
 | `4000 0000 0000 0069` | Cartão vencido (`expired_card`) |
 | `4000 0000 0000 0127` | CVV incorreto (`incorrect_cvc`) |
+| `4000 0000 0000 7726` | Aprovado; o estorno fica pendente e conclui depois de 3 dias |
+| `4000 0000 0000 5126` | Aprovado; o estorno fica pendente e falha (`expired_or_canceled_card`) |
 
 Qualquer outro número com dígito verificador válido é aprovado. Validade e CVV
 não são conferidos. O PIX tem um botão "Simular pagamento do PIX", que faz o
@@ -315,6 +320,26 @@ papel do banco avisando que o dinheiro caiu.
 
 Um cartão recusado não encerra a cobrança: ela continua `pending` e o pagador
 pode tentar outro cartão.
+
+### Estornos que levam tempo, e que falham
+
+Numa plataforma real, o estorno no cartão leva dias e pode falhar — o cartão foi
+cancelado, por exemplo. Os dois últimos cartões da tabela simulam isso; com os
+outros cartões e com PIX, o estorno conclui na hora.
+
+```
+ (cartão comum, PIX) ──────────────► succeeded
+ (7726, 5126)        ──► pending ──┬► succeeded   7726, depois de 3 dias
+                                   └► failed      5126, depois de 1 minuto
+```
+
+- O valor pendente **já conta** em `amountRefunded`: não dá para pedir de novo o
+  que está a caminho.
+- Se o estorno falha, o valor sai de `amountRefunded` e pode ser estornado de novo.
+- O lojista é avisado em cada passo: `refund.pending`, `refund.succeeded`,
+  `refund.failed`.
+- Os prazos são configuráveis ([Configuração](#configuração)). Para uma
+  demonstração: `STANDARDPAY_REFUNDS_DELAYED_BY=PT2M`.
 
 ## API
 
@@ -352,6 +377,9 @@ toda linha de log daquela requisição — é o que o lojista manda para o supor
 | `STANDARDPAY_WEBHOOKS_POLL_INTERVAL` | `5s` | De quanto em quanto tempo os webhooks pendentes saem |
 | `STANDARDPAY_WEBHOOKS_MAX_ATTEMPTS` | `8` | Tentativas antes de desistir |
 | `STANDARDPAY_WEBHOOKS_TIMEOUT` | `PT10S` | Quanto esperar a resposta do lojista |
+| `STANDARDPAY_REFUNDS_DELAYED_BY` | `P3D` | Quanto o estorno do cartão `…7726` leva para concluir |
+| `STANDARDPAY_REFUNDS_FAILS_AFTER` | `PT1M` | Quanto o estorno do cartão `…5126` leva para falhar |
+| `STANDARDPAY_REFUNDS_POLL_INTERVAL` | `30s` | De quanto em quanto tempo os estornos pendentes são resolvidos |
 | `PORT` | `8080` | Porta HTTP |
 | `QUARKUS_OTEL_SDK_DISABLED` | `true` | `false` liga a telemetria ([Observabilidade](#-observabilidade)) |
 | `STANDARDPAY_OTEL_ENDPOINT` | `http://localhost:4318` | Coletor OpenTelemetry (OTLP sobre HTTP) |
@@ -414,8 +442,10 @@ Grafana é escolha explícita, pelo perfil do compose.
 | `standardpay_payments_declined_total` | contador | `reason` (`insufficient_funds`, `card_declined`…) |
 | `standardpay_payments_canceled_total` | contador | `by` (`merchant`, `payer`) |
 | `standardpay_payments_expired_total` | contador | — |
-| `standardpay_refunds_total` | contador | `type` (`full`, `partial`) |
+| `standardpay_refunds_total` | contador (só os concluídos) | `type` (`full`, `partial`) |
 | `standardpay_refunds_amount_cents_total` | contador (centavos) | `currency` |
+| `standardpay_refunds_pending_total` | contador | — |
+| `standardpay_refunds_failed_total` | contador | `reason` |
 | `standardpay_webhooks_delivery_milliseconds` | histograma | `event`, `outcome` (`delivered`, `retry`, `gave_up`) |
 | `standardpay_webhooks_pending` | medidor | — |
 | `http_server_requests_milliseconds` | histograma | `method`, `uri`, `status` |
@@ -530,7 +560,7 @@ standard-pay/
 │   └── support/                   ← Api (atalhos) · WebhookSink (lojista de mentira)
 ├── diagrams/                      ← diagramas archify: JSON-fonte, HTML interativo e SVG
 ├── observabilidade/               ← painel do Grafana, carregado pelo docker-compose
-├── postman/                       ← collection com a jornada completa e 62 asserções
+├── postman/                       ← collection com a jornada completa e 70 asserções
 ├── scripts/                       ← extração dos SVG dos diagramas
 ├── .github/workflows/ci.yml       ← testes em todo push; publica a imagem na main e nas tags
 ├── Dockerfile                     ← compila e empacota dentro do Docker, para amd64 e arm64

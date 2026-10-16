@@ -1,6 +1,7 @@
 package org.leonardo.standardpay.payments.control;
 
 import org.junit.jupiter.api.Test;
+import org.leonardo.standardpay.payments.entity.RefundBehavior;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -26,6 +27,21 @@ class TestCardsTest {
         // Assert
         assertEquals("card_declined", declined.code());
         assertEquals("insufficient_funds", noFunds.code());
+    }
+
+    @Test
+    void slowRefundCardsAreApprovedAndCarryTheirRefundBehavior() {
+        // Act
+        var delayed = TestCards.evaluate("4000 0000 0000 7726");
+        var failing = TestCards.evaluate("4000 0000 0000 5126");
+        var regular = TestCards.evaluate("4242 4242 4242 4242");
+
+        // Assert
+        assertTrue(delayed.approved());
+        assertTrue(failing.approved());
+        assertEquals(RefundBehavior.DELAYED, delayed.refunds());
+        assertEquals(RefundBehavior.FAILS, failing.refunds());
+        assertEquals(RefundBehavior.INSTANT, regular.refunds());
     }
 
     @Test

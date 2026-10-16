@@ -67,8 +67,14 @@ public class Payment extends PanacheEntityBase {
     @Column(name = "failure_message")
     public String failureMessage;
 
+    /** Estornado ou em estorno: o pendente já conta, para não ser estornado duas vezes. */
     @Column(name = "amount_refunded")
     public long amountRefunded;
+
+    /** Decidido pelo cartão de teste que pagou. Não sai na API: é parte da simulação. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "refund_behavior")
+    public RefundBehavior refundBehavior = RefundBehavior.INSTANT;
 
     @Column(name = "return_url")
     public String returnUrl;
@@ -102,10 +108,11 @@ public class Payment extends PanacheEntityBase {
         return status == PaymentStatus.SUCCEEDED ? amount - amountRefunded : 0;
     }
 
-    public void succeed(Method method, String cardLast4, Instant now) {
+    public void succeed(Method method, String cardLast4, RefundBehavior refunds, Instant now) {
         this.status = PaymentStatus.SUCCEEDED;
         this.method = method;
         this.cardLast4 = cardLast4;
+        this.refundBehavior = refunds;
         this.failureCode = null;
         this.failureMessage = null;
         this.paidAt = now;

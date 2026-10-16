@@ -31,7 +31,8 @@
     { "key": "merchantId", "value": "" },
     { "key": "paymentId", "value": "" },
     { "key": "idempotencyKey", "value": "" },
-    { "key": "canceledPaymentId", "value": "" }
+    { "key": "canceledPaymentId", "value": "" },
+    { "key": "slowRefundPaymentId", "value": "" }
   ],
   "item": [
     {
@@ -364,6 +365,78 @@
             "listen": "test",
             "script": { "type": "text/javascript", "exec": [
               "pm.test('os dois estornos, na ordem', () => pm.expect(pm.response.json().map(r => r.amount)).to.eql([5000, 14500]));"
+            ]}
+          }]
+        },
+        {
+          "name": "Cobrança para o estorno lento",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/v1/payments",
+            "body": { "mode": "raw", "raw": "{ \"amount\": 8000, \"description\": \"Paga com o cartão de estorno lento\", \"returnUrl\": \"https://loja.example/pedido/5678/obrigado\" }", "options": { "raw": { "language": "json" } } }
+          },
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "pm.test('201 Created', () => pm.response.to.have.status(201));",
+              "pm.collectionVariables.set('slowRefundPaymentId', pm.response.json().id);"
+            ]}
+          }]
+        },
+        {
+          "name": "Pagar com o cartão 7726 (o estorno leva dias)",
+          "protocolProfileBehavior": { "followRedirects": false },
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "url": "{{baseUrl}}/checkout/{{slowRefundPaymentId}}/card",
+            "body": { "mode": "urlencoded", "urlencoded": [{ "key": "cardNumber", "value": "4000 0000 0000 7726" }] }
+          },
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "pm.test('303, aprovado', () => {",
+              "    pm.response.to.have.status(303);",
+              "    pm.expect(pm.response.headers.get('Location')).to.include('status=succeeded');",
+              "});"
+            ]}
+          }]
+        },
+        {
+          "name": "O estorno fica pendente",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/v1/payments/{{slowRefundPaymentId}}/refunds",
+            "body": { "mode": "raw", "raw": "{}", "options": { "raw": { "language": "json" } } }
+          },
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "pm.test('201 Created', () => pm.response.to.have.status(201));",
+              "const body = pm.response.json();",
+              "pm.test('pendente, ainda sem data de conclusão', () => {",
+              "    pm.expect(body.status).to.eql('pending');",
+              "    pm.expect(body.settledAt).to.eql(null);",
+              "});",
+              "pm.test('o pendente já conta no estornado', () => pm.expect(body.payment.amountRefunded).to.eql(8000));"
+            ]}
+          }]
+        },
+        {
+          "name": "Pedir de novo enquanto pendente → 409",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/v1/payments/{{slowRefundPaymentId}}/refunds",
+            "body": { "mode": "raw", "raw": "{}", "options": { "raw": { "language": "json" } } }
+          },
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "pm.test('409 Conflict', () => pm.response.to.have.status(409));",
+              "pm.test('código already_refunded', () => pm.expect(pm.response.json().error.code).to.eql('already_refunded'));"
             ]}
           }]
         }

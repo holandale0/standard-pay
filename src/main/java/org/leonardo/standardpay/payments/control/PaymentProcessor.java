@@ -14,6 +14,7 @@ import org.leonardo.standardpay.payments.control.PaymentTelemetry.PaymentEvent.K
 import org.leonardo.standardpay.payments.entity.Payment;
 import org.leonardo.standardpay.payments.entity.PaymentStatus;
 import org.leonardo.standardpay.payments.entity.PaymentView;
+import org.leonardo.standardpay.payments.entity.RefundBehavior;
 import org.leonardo.standardpay.platform.ApiException;
 import org.leonardo.standardpay.platform.Ids;
 import org.leonardo.standardpay.webhooks.control.WebhookPublisher;
@@ -128,7 +129,7 @@ public class PaymentProcessor {
         var outcome = TestCards.evaluate(cardNumber);
         String last4 = TestCards.last4(cardNumber);
         if (outcome.approved()) {
-            p.succeed(Payment.Method.CARD, last4, now);
+            p.succeed(Payment.Method.CARD, last4, outcome.refunds(), now);
             webhooks.publish(p.merchant, "payment.succeeded", view(p));
             events.fire(PaymentEvent.of(Kind.SUCCEEDED, p, null));
         } else {
@@ -148,7 +149,7 @@ public class PaymentProcessor {
         Payment p = locked(paymentId);
         var now = Instant.now();
         if (!p.isPayable(now)) return p;
-        p.succeed(Payment.Method.PIX, null, now);
+        p.succeed(Payment.Method.PIX, null, RefundBehavior.INSTANT, now);
         webhooks.publish(p.merchant, "payment.succeeded", view(p));
         events.fire(PaymentEvent.of(Kind.SUCCEEDED, p, null));
         return p;

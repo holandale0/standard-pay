@@ -66,7 +66,9 @@ public class CheckoutResource {
     private static final List<TestCard> TEST_CARDS = List.of(
             new TestCard("4242 4242 4242 4242", "aprovado"),
             new TestCard("4000 0000 0000 0002", "recusado"),
-            new TestCard("4000 0000 0000 9995", "saldo insuficiente"));
+            new TestCard("4000 0000 0000 9995", "saldo insuficiente"),
+            new TestCard("4000 0000 0000 7726", "aprovado; o estorno leva dias"),
+            new TestCard("4000 0000 0000 5126", "aprovado; o estorno falha"));
 
     @CheckedTemplate
     static class Templates {

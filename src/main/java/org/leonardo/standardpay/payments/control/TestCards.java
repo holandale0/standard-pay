@@ -1,5 +1,7 @@
 package org.leonardo.standardpay.payments.control;
 
+import org.leonardo.standardpay.payments.entity.RefundBehavior;
+
 import java.util.Map;
 
 /**
@@ -8,16 +10,20 @@ import java.util.Map;
  * É o que torna uma demonstração reproduzível: quem apresenta sabe que
  * 4000 0000 0000 9995 vai dar "saldo insuficiente", sempre. Qualquer outro
  * número válido (que passe no dígito verificador) é aprovado.
+ *
+ * Alguns cartões aprovados também decidem o que acontece com os estornos
+ * depois — os mesmos números do Stripe, para quem já conhece.
  */
 public final class TestCards {
 
-    public record Outcome(boolean approved, String code, String message) {
-        static Outcome approve() {
-            return new Outcome(true, null, null);
+    /** @param refunds como os estornos do pagamento vão se comportar; só faz sentido se aprovado */
+    public record Outcome(boolean approved, String code, String message, RefundBehavior refunds) {
+        static Outcome approve(RefundBehavior refunds) {
+            return new Outcome(true, null, null, refunds);
         }
 
         static Outcome decline(String code, String message) {
-            return new Outcome(false, code, message);
+            return new Outcome(false, code, message, null);
         }
     }
 
@@ -28,6 +34,11 @@ public final class TestCards {
             "4000000000000069", Outcome.decline("expired_card", "The card has expired."),
             "4000000000000127", Outcome.decline("incorrect_cvc", "The card's security code is incorrect."));
 
+    /** Número → aprovado, com estornos que não concluem na hora. */
+    public static final Map<String, RefundBehavior> SLOW_REFUNDS = Map.of(
+            "4000000000007726", RefundBehavior.DELAYED,
+            "4000000000005126", RefundBehavior.FAILS);
+
     private TestCards() {
     }
 
@@ -36,7 +47,9 @@ public final class TestCards {
         if (!digits.matches("\\d{13,19}") || !luhn(digits)) {
             return Outcome.decline("invalid_number", "The card number is invalid.");
         }
-        return DECLINES.getOrDefault(digits, Outcome.approve());
+        var declined = DECLINES.get(digits);
+        if (declined != null) return declined;
+        return Outcome.approve(SLOW_REFUNDS.getOrDefault(digits, RefundBehavior.INSTANT));
     }
 
     public static String last4(String number) {
