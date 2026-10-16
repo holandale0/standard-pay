@@ -5,6 +5,7 @@ import jakarta.persistence.PersistenceException;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
@@ -53,7 +54,17 @@ public class PaymentsResource {
             @Size(max = 1000, message = "must have at most 1000 characters")
             String returnUrl,
             @Size(max = 1000, message = "must have at most 1000 characters")
-            String cancelUrl) {
+            String cancelUrl,
+            List<@Valid @NotNull SplitRequest> splits) {
+    }
+
+    /** A parte de um recebedor, em centavos. */
+    public record SplitRequest(
+            @NotBlank(message = "is required")
+            String recipientId,
+            @NotNull(message = "is required")
+            @Min(value = 1, message = "must be at least 1 (amounts are in cents)")
+            Long amount) {
     }
 
     @POST
@@ -69,7 +80,9 @@ public class PaymentsResource {
         }
 
         var command = new PaymentProcessor.NewPayment(request.amount(), request.currency(), request.description(),
-                request.metadata(), request.returnUrl(), request.cancelUrl());
+                request.metadata(), request.returnUrl(), request.cancelUrl(),
+                request.splits() == null ? List.of() : request.splits().stream()
+                        .map(s -> new PaymentProcessor.Split(s.recipientId(), s.amount())).toList());
         Payment payment;
         try {
             payment = processor.create(authenticated.get(), command, key);

@@ -32,7 +32,9 @@
     { "key": "paymentId", "value": "" },
     { "key": "idempotencyKey", "value": "" },
     { "key": "canceledPaymentId", "value": "" },
-    { "key": "slowRefundPaymentId", "value": "" }
+    { "key": "slowRefundPaymentId", "value": "" },
+    { "key": "recipientId", "value": "" },
+    { "key": "splitPaymentId", "value": "" }
   ],
   "item": [
     {
@@ -524,6 +526,134 @@
               "});",
               "pm.test('cada entrega traz o corpo exato que foi assinado', () =>",
               "    pm.response.json().forEach(d => pm.expect(JSON.parse(d.payload).id).to.eql(d.id)));"
+            ]}
+          }]
+        }
+      ]
+    },
+    {
+      "name": "8. Split",
+      "description": "Uma cobrança dividida com uma recebedora: o saldo dela, e o estorno saindo de cada conta na proporção do que recebeu.",
+      "item": [
+        {
+          "name": "Criar recebedor",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/v1/recipients",
+            "body": { "mode": "raw", "raw": "{ \"name\": \"Guia Ana\", \"metadata\": { \"guideId\": \"7\" } }", "options": { "raw": { "language": "json" } } }
+          },
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "pm.test('201 Created', () => pm.response.to.have.status(201));",
+              "pm.test('id de recebedor', () => pm.expect(pm.response.json().id).to.match(/^rcp_/));",
+              "pm.collectionVariables.set('recipientId', pm.response.json().id);"
+            ]}
+          }]
+        },
+        {
+          "name": "Partes acima do valor → 400",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/v1/payments",
+            "body": { "mode": "raw", "raw": "{ \"amount\": 10000, \"splits\": [{ \"recipientId\": \"{{recipientId}}\", \"amount\": 12000 }] }", "options": { "raw": { "language": "json" } } }
+          },
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "pm.test('400 Bad Request', () => pm.response.to.have.status(400));",
+              "pm.test('código invalid_split', () => pm.expect(pm.response.json().error.code).to.eql('invalid_split'));"
+            ]}
+          }]
+        },
+        {
+          "name": "Cobrança dividida: R$ 70,00 para a guia",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/v1/payments",
+            "body": { "mode": "raw", "raw": "{ \"amount\": 10000, \"description\": \"Passeio com guia\", \"returnUrl\": \"https://loja.example/pedido/9012/obrigado\", \"splits\": [{ \"recipientId\": \"{{recipientId}}\", \"amount\": 7000 }] }", "options": { "raw": { "language": "json" } } }
+          },
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "pm.test('201 Created', () => pm.response.to.have.status(201));",
+              "const body = pm.response.json();",
+              "pm.test('a parte da guia está na cobrança', () => pm.expect(body.splits).to.eql([{ recipientId: pm.collectionVariables.get('recipientId'), amount: 7000 }]));",
+              "pm.collectionVariables.set('splitPaymentId', body.id);"
+            ]}
+          }]
+        },
+        {
+          "name": "Pagar com PIX",
+          "protocolProfileBehavior": { "followRedirects": false },
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "url": "{{baseUrl}}/checkout/{{splitPaymentId}}/pix"
+          },
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "pm.test('303, pago', () => {",
+              "    pm.response.to.have.status(303);",
+              "    pm.expect(pm.response.headers.get('Location')).to.include('status=succeeded');",
+              "});"
+            ]}
+          }]
+        },
+        {
+          "name": "Saldo da guia: pendente",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/v1/recipients/{{recipientId}}/balance"
+          },
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "pm.test('200 OK', () => pm.response.to.have.status(200));",
+              "const brl = pm.response.json().balances.find(b => b.currency === 'BRL');",
+              "pm.test('R$ 70,00 pendentes, nada disponível ainda', () => {",
+              "    pm.expect(brl.pending).to.eql(7000);",
+              "    pm.expect(brl.available).to.eql(0);",
+              "});"
+            ]}
+          }]
+        },
+        {
+          "name": "Estornar metade",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/v1/payments/{{splitPaymentId}}/refunds",
+            "body": { "mode": "raw", "raw": "{ \"amount\": 5000 }", "options": { "raw": { "language": "json" } } }
+          },
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "pm.test('201 Created', () => pm.response.to.have.status(201));"
+            ]}
+          }]
+        },
+        {
+          "name": "Extrato da guia: a parte dela no estorno",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/v1/recipients/{{recipientId}}/transactions"
+          },
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "pm.test('200 OK', () => pm.response.to.have.status(200));",
+              "const [estorno, pagamento] = pm.response.json();",
+              "pm.test('recebeu R$ 70,00 e devolveu R$ 35,00 — 70% da metade', () => {",
+              "    pm.expect(pagamento.type).to.eql('payment');",
+              "    pm.expect(pagamento.amount).to.eql(7000);",
+              "    pm.expect(estorno.type).to.eql('refund');",
+              "    pm.expect(estorno.amount).to.eql(-3500);",
+              "});"
             ]}
           }]
         }

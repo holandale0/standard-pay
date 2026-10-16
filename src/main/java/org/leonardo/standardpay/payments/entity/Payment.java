@@ -2,7 +2,9 @@ package org.leonardo.standardpay.payments.entity;
 
 import io.quarkus.hibernate.orm.panache.PanacheEntityBase;
 import io.quarkus.panache.common.Page;
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -17,6 +19,7 @@ import org.hibernate.type.SqlTypes;
 import org.leonardo.standardpay.merchants.entity.Merchant;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -50,6 +53,11 @@ public class Payment extends PanacheEntityBase {
     /** Dados do lojista, devolvidos intactos — o tour-guide guarda aqui o id do passeio. */
     @JdbcTypeCode(SqlTypes.JSON)
     public Map<String, String> metadata = new HashMap<>();
+
+    /** As partes dos recebedores. Vazia: tudo é do lojista. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "payment_split", joinColumns = @JoinColumn(name = "payment_id"))
+    public List<PaymentSplit> splits = new ArrayList<>();
 
     @Enumerated(EnumType.STRING)
     public PaymentStatus status;

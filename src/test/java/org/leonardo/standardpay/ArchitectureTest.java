@@ -26,7 +26,7 @@ import static com.tngtech.archunit.library.dependencies.SlicesRuleDefinition.sli
 class ArchitectureTest {
 
     private static final String[] COMPONENTS = {
-            "..merchants..", "..payments..", "..checkout..", "..refunds..", "..webhooks.."};
+            "..merchants..", "..payments..", "..checkout..", "..refunds..", "..webhooks..", "..balances.."};
 
     /**
      * Boundary → Control → Entity, nunca ao contrário.

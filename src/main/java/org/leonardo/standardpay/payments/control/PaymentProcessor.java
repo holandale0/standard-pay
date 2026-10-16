@@ -8,10 +8,13 @@ import jakarta.enterprise.event.Event;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
+import org.leonardo.standardpay.balances.control.Ledger;
+import org.leonardo.standardpay.balances.entity.Recipient;
 import org.leonardo.standardpay.merchants.entity.Merchant;
 import org.leonardo.standardpay.payments.control.PaymentTelemetry.PaymentEvent;
 import org.leonardo.standardpay.payments.control.PaymentTelemetry.PaymentEvent.Kind;
 import org.leonardo.standardpay.payments.entity.Payment;
+import org.leonardo.standardpay.payments.entity.PaymentSplit;
 import org.leonardo.standardpay.payments.entity.PaymentStatus;
 import org.leonardo.standardpay.payments.entity.PaymentView;
 import org.leonardo.standardpay.payments.entity.RefundBehavior;
@@ -22,7 +25,9 @@ import org.leonardo.standardpay.webhooks.control.WebhookPublisher;
 import java.net.URI;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 
@@ -38,8 +43,14 @@ public class PaymentProcessor {
 
     /** O que o lojista pede. Valores em centavos. */
     public record NewPayment(long amount, String currency, String description, Map<String, String> metadata,
-                             String returnUrl, String cancelUrl) {
+                             String returnUrl, String cancelUrl, List<Split> splits) {
     }
+
+    /** A parte de um recebedor, pedida pelo lojista. */
+    public record Split(String recipientId, long amount) {
+    }
+
+    static final int MAX_SPLITS = 10;
 
     /** O desfecho de uma tentativa na página de checkout. */
     public record Attempt(Payment payment, TestCards.Outcome outcome) {
@@ -47,6 +58,9 @@ public class PaymentProcessor {
 
     @Inject
     WebhookPublisher webhooks;
+
+    @Inject
+    Ledger ledger;
 
     /** Registrados só depois do commit — ver PaymentTelemetry. */
     @Inject
@@ -82,6 +96,7 @@ public class PaymentProcessor {
         p.status = PaymentStatus.PENDING;
         p.returnUrl = validUrl(request.returnUrl(), "returnUrl");
         p.cancelUrl = validUrl(request.cancelUrl(), "cancelUrl");
+        p.splits = validSplits(merchant.id, p.amount, request.splits());
         p.idempotencyKey = idempotencyKey;
         p.expiresAt = now.plus(expiresIn);
         p.createdAt = now;
@@ -130,8 +145,7 @@ public class PaymentProcessor {
         String last4 = TestCards.last4(cardNumber);
         if (outcome.approved()) {
             p.succeed(Payment.Method.CARD, last4, outcome.refunds(), now);
-            webhooks.publish(p.merchant, "payment.succeeded", view(p));
-            events.fire(PaymentEvent.of(Kind.SUCCEEDED, p, null));
+            paid(p, now);
         } else {
             p.decline(outcome.code(), outcome.message(), last4, now);
             webhooks.publish(p.merchant, "payment.failed", view(p));
@@ -150,8 +164,7 @@ public class PaymentProcessor {
         var now = Instant.now();
         if (!p.isPayable(now)) return p;
         p.succeed(Payment.Method.PIX, null, RefundBehavior.INSTANT, now);
-        webhooks.publish(p.merchant, "payment.succeeded", view(p));
-        events.fire(PaymentEvent.of(Kind.SUCCEEDED, p, null));
+        paid(p, now);
         return p;
     }
 
@@ -215,6 +228,44 @@ public class PaymentProcessor {
         webhooks.publish(p.merchant, "payment.canceled", view(p));
         events.fire(PaymentEvent.of(Kind.CANCELED, p, by));
         return p;
+    }
+
+    /** Pago: cada parte vai para o extrato da sua conta, e o lojista é avisado. */
+    private void paid(Payment p, Instant now) {
+        var shares = p.splits.stream().map(s -> new Ledger.Share(s.recipientId, s.amount)).toList();
+        ledger.paymentSucceeded(p.merchant.id, p.id, p.currency, p.amount, shares, now);
+        webhooks.publish(p.merchant, "payment.succeeded", view(p));
+        events.fire(PaymentEvent.of(Kind.SUCCEEDED, p, null));
+    }
+
+    /**
+     * As partes têm de ser de recebedores do próprio lojista, um de cada, e
+     * somar no máximo o valor da cobrança — o que sobra é dele.
+     */
+    private static List<PaymentSplit> validSplits(String merchantId, long amount, List<Split> splits) {
+        if (splits == null || splits.isEmpty()) return new ArrayList<>();
+        if (splits.size() > MAX_SPLITS) {
+            throw ApiException.invalid("invalid_split",
+                    "A payment can be split among at most " + MAX_SPLITS + " recipients.");
+        }
+        var result = new ArrayList<PaymentSplit>();
+        var seen = new HashSet<String>();
+        long total = 0;
+        for (Split s : splits) {
+            if (!seen.add(s.recipientId())) {
+                throw ApiException.invalid("invalid_split", "Recipient " + s.recipientId() + " appears more than once.");
+            }
+            if (Recipient.findOwned(merchantId, s.recipientId()).isEmpty()) {
+                throw ApiException.invalid("invalid_split", "Recipient " + s.recipientId() + " does not exist.");
+            }
+            total += s.amount();
+            result.add(new PaymentSplit(s.recipientId(), s.amount()));
+        }
+        if (total > amount) {
+            throw ApiException.invalid("invalid_split", "Splits add up to " + total
+                    + ", more than the payment amount " + amount + " (amounts are in cents).");
+        }
+        return result;
     }
 
     private Payment locked(String paymentId) {

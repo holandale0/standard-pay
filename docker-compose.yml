@@ -49,6 +49,8 @@ services:
       # Prazos dos estornos lentos; para demonstrar, algo como PT2M.
       STANDARDPAY_REFUNDS_DELAYED_BY: ${STANDARDPAY_REFUNDS_DELAYED_BY:-P3D}
       STANDARDPAY_REFUNDS_FAILS_AFTER: ${STANDARDPAY_REFUNDS_FAILS_AFTER:-PT1M}
+      # Quanto o saldo do split fica pendente antes de ficar disponível.
+      STANDARDPAY_BALANCES_AVAILABLE_AFTER: ${STANDARDPAY_BALANCES_AVAILABLE_AFTER:-P1D}
       # Com o perfil observabilidade junto, basta trocar para "false".
       QUARKUS_OTEL_SDK_DISABLED: "true"
       STANDARDPAY_OTEL_ENDPOINT: http://observabilidade:4318

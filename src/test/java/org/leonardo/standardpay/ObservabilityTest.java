@@ -13,7 +13,10 @@ import org.leonardo.standardpay.support.Api;
 import org.leonardo.standardpay.support.WebhookSink;
 import org.leonardo.standardpay.webhooks.control.WebhookDispatcher;
 
+import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.*;
@@ -191,8 +194,14 @@ class ObservabilityTest {
         // Act
         Timer timer = registry.find("http.server.requests").tags("uri", "/v1/merchants").timer();
 
-        // Assert — sem faixas, o p95 do painel daria NaN
-        assertEquals(11, timer.takeSnapshot().histogramCounts().length);
+        // Assert — sem faixas, o p95 do painel daria NaN. Compara os limites, e não
+        // a quantidade: o registro OTLP acrescenta a faixa de estouro, e qual dos
+        // dois registros responde ao find varia de uma execução para outra.
+        var bounds = Arrays.stream(timer.takeSnapshot().histogramCounts())
+                .map(b -> (long) b.bucket(TimeUnit.MILLISECONDS))
+                .toList();
+        assertTrue(bounds.containsAll(List.of(5L, 10L, 25L, 50L, 100L, 250L, 500L, 1000L, 2500L, 5000L, 10000L)),
+                "faixas: " + bounds);
     }
 
     @Test

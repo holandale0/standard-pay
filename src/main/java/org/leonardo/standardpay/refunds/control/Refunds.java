@@ -8,6 +8,7 @@ import jakarta.enterprise.event.Event;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
+import org.leonardo.standardpay.balances.control.Ledger;
 import org.leonardo.standardpay.payments.control.PaymentProcessor;
 import org.leonardo.standardpay.payments.entity.Payment;
 import org.leonardo.standardpay.payments.entity.PaymentStatus;
@@ -41,6 +42,9 @@ public class Refunds {
 
     @Inject
     WebhookPublisher webhooks;
+
+    @Inject
+    Ledger ledger;
 
     @Inject
     Event<RefundEvent> events;
@@ -94,6 +98,7 @@ public class Refunds {
 
         p.amountRefunded += value;
         p.updatedAt = now;
+        ledger.refunded(p.id, r.id, p.amountRefunded, now);
 
         announce(r, p);
         return view(r, p);
@@ -143,6 +148,7 @@ public class Refunds {
         if (p.refundBehavior == RefundBehavior.FAILS) {
             r.fail(FAILURE_CODE, "The card was canceled or expired before the refund reached it.", now);
             p.amountRefunded -= r.amount;
+            ledger.refundFailed(r.id, now);
         } else {
             r.succeed(now);
         }

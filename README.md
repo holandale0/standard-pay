@@ -48,7 +48,8 @@ escolhida, troca-se a integração, não o desenho do sistema.
 - **Página de pagamento hospedada**, em português, com cartão de crédito e PIX simulados
 - **Cartões de teste** de resultado previsível — a mesma demonstração dá sempre o mesmo resultado
 - **Webhooks assinados** (HMAC-SHA256, no formato do Stripe) com reenvio automático
-- **Estornos** totais e parciais
+- **Estornos** totais e parciais — e, com cartões de teste, estornos que levam dias ou que falham
+- **Split**: a cobrança dividida entre recebedores, com saldo pendente e disponível e extrato por conta
 - **Expiração** de cobranças não pagas
 - Documentação interativa em `/q/swagger-ui`
 - **Observabilidade**: logs correlacionados por requisição, métricas de negócio e traces que seguem até o webhook do lojista — com um Grafana pronto ([detalhes abaixo](#-observabilidade))
@@ -205,7 +206,7 @@ Crie um lojista em `POST /v1/merchants`, copie a `apiKey` da resposta e cole em
 **Collection do Postman** em [`postman/`](postman): a jornada completa de uma
 integração — criar lojista, cobrar, o pagador recusado e depois aprovado,
 estornar em duas partes, ver um estorno ficar pendente, cancelar, conferir os
-webhooks — com 70 asserções.
+webhooks, dividir uma cobrança com uma recebedora — com 83 asserções.
 As requisições são encadeadas: cada uma guarda nas variáveis da collection o
 que a seguinte precisa, então basta rodar a pasta inteira, em ordem.
 
@@ -341,6 +342,47 @@ outros cartões e com PIX, o estorno conclui na hora.
 - Os prazos são configuráveis ([Configuração](#configuração)). Para uma
   demonstração: `STANDARDPAY_REFUNDS_DELAYED_BY=PT2M`.
 
+## Split: dividindo a cobrança
+
+Uma cobrança pode ser dividida entre **recebedores** — a guia de um passeio, o
+vendedor de um marketplace. Cada um tem saldo e extrato próprios; o que sobra
+das partes fica com o lojista, que também tem os seus.
+
+```bash
+# 1. Cadastre o recebedor, uma vez
+curl -X POST http://localhost:8080/v1/recipients \
+  -H "Authorization: Bearer sk_test_..." -H "Content-Type: application/json" \
+  -d '{ "name": "Guia Ana", "metadata": { "guideId": "7" } }'
+# → { "id": "rcp_...", ... }
+
+# 2. Na cobrança, diga quanto é de cada um (em centavos)
+curl -X POST http://localhost:8080/v1/payments \
+  -H "Authorization: Bearer sk_test_..." -H "Content-Type: application/json" \
+  -d '{ "amount": 10000, "splits": [{ "recipientId": "rcp_...", "amount": 7000 }] }'
+```
+
+Paga a cobrança, R$ 70,00 entram no saldo da guia e R$ 30,00 no do lojista —
+**pendentes** até o prazo de liberação (D+1 por padrão), e **disponíveis**
+depois:
+
+```json
+GET /v1/recipients/rcp_.../balance
+{ "account": "rcp_...", "balances": [{ "currency": "BRL", "available": 0, "pending": 7000 }] }
+```
+
+- **Estorno sai de cada conta na proporção do que ela recebeu.** Estornar metade
+  da cobrança acima tira R$ 35,00 da guia e R$ 15,00 do lojista. O estorno sai
+  do saldo disponível na hora, e por isso o disponível pode ficar negativo
+  enquanto o crédito ainda está pendente — como nas plataformas reais.
+- **Nenhum centavo se perde no arredondamento.** A proporção é calculada sobre o
+  total já estornado, e não estorno a estorno: estornada a cobrança inteira, em
+  quantas partes for, cada conta devolveu exatamente o que recebeu.
+- **Estorno que falha devolve** a parte de cada conta.
+- **O extrato nunca é reescrito.** Cada crédito, débito e devolução é uma linha
+  (`payment`, `refund`, `refund_failure`); o saldo é a soma delas.
+- As partes somam no máximo o valor da cobrança, são de recebedores do próprio
+  lojista, até 10 por cobrança. Senão: `400 invalid_split`.
+
 ## API
 
 | Método | Caminho | Para quê |
@@ -354,6 +396,12 @@ outros cartões e com PIX, o estorno conclui na hora.
 | `POST` | `/v1/payments/{id}/cancel` | Cancelar enquanto pendente |
 | `POST` | `/v1/payments/{id}/refunds` | Estornar (sem `amount`, estorna tudo o que resta) |
 | `GET` | `/v1/payments/{id}/refunds` | Estornos da cobrança |
+| `POST` / `GET` | `/v1/recipients` | Cadastrar / listar recebedores |
+| `GET` | `/v1/recipients/{id}` | Consultar um recebedor |
+| `GET` | `/v1/recipients/{id}/balance` | Saldo do recebedor, disponível e pendente |
+| `GET` | `/v1/recipients/{id}/transactions` | Extrato do recebedor |
+| `GET` | `/v1/balance` | Saldo do próprio lojista |
+| `GET` | `/v1/balance/transactions` | Extrato do próprio lojista |
 | `GET` | `/v1/webhook-deliveries` | O que foi enviado, e o que aconteceu em cada envio |
 | `POST` | `/v1/webhook-deliveries/{id}/retry` | Enviar de novo |
 
@@ -380,6 +428,7 @@ toda linha de log daquela requisição — é o que o lojista manda para o supor
 | `STANDARDPAY_REFUNDS_DELAYED_BY` | `P3D` | Quanto o estorno do cartão `…7726` leva para concluir |
 | `STANDARDPAY_REFUNDS_FAILS_AFTER` | `PT1M` | Quanto o estorno do cartão `…5126` leva para falhar |
 | `STANDARDPAY_REFUNDS_POLL_INTERVAL` | `30s` | De quanto em quanto tempo os estornos pendentes são resolvidos |
+| `STANDARDPAY_BALANCES_AVAILABLE_AFTER` | `P1D` | Quanto o valor de uma cobrança paga fica pendente no saldo antes de ficar disponível |
 | `PORT` | `8080` | Porta HTTP |
 | `QUARKUS_OTEL_SDK_DISABLED` | `true` | `false` liga a telemetria ([Observabilidade](#-observabilidade)) |
 | `STANDARDPAY_OTEL_ENDPOINT` | `http://localhost:4318` | Coletor OpenTelemetry (OTLP sobre HTTP) |
@@ -492,6 +541,10 @@ Decisões que valem saber:
 - **Chave de API guardada como SHA-256.** Quem lê o banco não consegue se passar
   pelo lojista.
 - **Valores em centavos**, como nas plataformas reais.
+- **Saldo como soma do extrato.** Não há coluna de saldo para manter em dia: o
+  saldo é a soma dos lançamentos, e cada um diz desde quando está disponível. O
+  pendente vira disponível sem varredura nenhuma, e saldo e extrato nunca
+  divergem.
 
 ---
 
@@ -544,6 +597,7 @@ standard-pay/
 │   ├── checkout/
 │   │   └── boundary/              ← CheckoutResource: a página do pagador
 │   ├── refunds/                   ← estornos: boundary · control · entity
+│   ├── balances/                  ← split: recebedores, extrato (Ledger) e saldos
 │   ├── webhooks/                  ← eventos para o lojista
 │   │   ├── boundary/              ← WebhookDeliveriesResource
 │   │   ├── control/               ← WebhookPublisher · WebhookDispatcher · Signatures
@@ -556,11 +610,11 @@ standard-pay/
 ├── src/test/java/org/leonardo/standardpay/
 │   ├── ArchitectureTest.java      ← as regras do BCE, com ArchUnit
 │   ├── ObservabilityTest.java     ← X-Request-Id, métricas e traceparent
-│   ├── merchants/ · payments/ · checkout/ · refunds/ · webhooks/
+│   ├── merchants/ · payments/ · checkout/ · refunds/ · webhooks/ · balances/
 │   └── support/                   ← Api (atalhos) · WebhookSink (lojista de mentira)
 ├── diagrams/                      ← diagramas archify: JSON-fonte, HTML interativo e SVG
 ├── observabilidade/               ← painel do Grafana, carregado pelo docker-compose
-├── postman/                       ← collection com a jornada completa e 70 asserções
+├── postman/                       ← collection com a jornada completa e 83 asserções
 ├── scripts/                       ← extração dos SVG dos diagramas
 ├── .github/workflows/ci.yml       ← testes em todo push; publica a imagem na main e nas tags
 ├── Dockerfile                     ← compila e empacota dentro do Docker, para amd64 e arm64
@@ -585,8 +639,6 @@ testes: se ele falhar, o nome já diz qual das duas coisas quebrou.
 
 ## Próximos passos
 
-- Split: dividir o valor entre recebedores, com saldo e extrato por recebedor
-- Simular falhas de estorno e estornos que levam dias
 - Painel web do lojista (hoje, tudo é pela API)
 
 ## Licença
