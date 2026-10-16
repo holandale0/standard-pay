@@ -1,0 +1,95 @@
+/* Painel do lojista. As mesmas cores da página de checkout. */
+:root {
+  --azul: #1f4e79; --azul-claro: #e8f0f8; --texto: #1d2733; --suave: #5b6775;
+  --borda: #d6dde5; --fundo: #f4f6f9; --branco: #fff;
+  --erro: #b3261e; --erro-fundo: #fbeceb; --ok: #1e7b34; --ok-fundo: #e6f4ea;
+  --alerta: #8a5a00; --alerta-fundo: #fff4d6;
+}
+* { box-sizing: border-box; }
+body { margin: 0; font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+       color: var(--texto); background: var(--fundo); }
+a { color: var(--azul); }
+code { font: .85em ui-monospace, monospace; background: var(--fundo); padding: 1px 5px; border-radius: 5px;
+       word-break: break-all; }
+
+.faixa { background: var(--alerta-fundo); color: #6b4e00; text-align: center; font-size: .82rem; padding: 6px 16px; }
+
+.topo { background: var(--branco); border-bottom: 1px solid var(--borda); }
+.topo-dentro { max-width: 1040px; margin: 0 auto; padding: 0 16px; display: flex; flex-wrap: wrap;
+               align-items: center; gap: 4px 20px; min-height: 56px; }
+.marca { font-weight: 800; color: var(--azul); letter-spacing: -.01em; }
+.marca span { font-weight: 400; color: var(--suave); }
+nav { display: flex; flex-wrap: wrap; gap: 2px; flex: 1; }
+nav a { text-decoration: none; color: var(--suave); padding: 8px 10px; border-radius: 8px; }
+nav a:hover { background: var(--fundo); }
+nav a.ativo { color: var(--azul); background: var(--azul-claro); font-weight: 600; }
+.conta { display: flex; align-items: center; gap: 10px; color: var(--suave); font-size: .9rem; }
+.conta form { margin: 0; }
+
+main { max-width: 1040px; margin: 0 auto; padding: 20px 16px 48px; }
+h1 { font-size: 1.4rem; margin: 4px 0 16px; }
+h2 { font-size: 1.05rem; margin: 28px 0 10px; }
+.sub { color: var(--suave); margin: -10px 0 16px; overflow-wrap: anywhere; }
+
+.aviso, .erro { border-radius: 10px; padding: 10px 14px; margin-bottom: 16px; }
+.aviso { background: var(--ok-fundo); color: var(--ok); }
+.erro { background: var(--erro-fundo); color: var(--erro); }
+
+.grade { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.cartao { background: var(--branco); border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.07); padding: 16px; }
+.rotulo { color: var(--suave); font-size: .82rem; margin: 0; }
+.numero { font-size: 1.6rem; font-weight: 800; margin: 2px 0 6px; }
+.negativo { color: var(--erro); }
+.credito { color: var(--ok); }
+
+.tabela { background: var(--branco); border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.07); overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--fundo); white-space: nowrap; }
+th { font-size: .78rem; text-transform: uppercase; letter-spacing: .03em; color: var(--suave); font-weight: 600; }
+td.quebra { white-space: normal; min-width: 180px; }
+.num { text-align: right; font-variant-numeric: tabular-nums; }
+tr:last-child td { border-bottom: 0; }
+.vazio { color: var(--suave); background: var(--branco); border-radius: 12px; padding: 16px; }
+
+.selo { display: inline-block; font-size: .78rem; font-weight: 600; padding: 2px 8px; border-radius: 99px;
+        background: var(--fundo); color: var(--suave); }
+.selo.succeeded, .selo.delivered { background: var(--ok-fundo); color: var(--ok); }
+.selo.pending { background: var(--alerta-fundo); color: var(--alerta); }
+.selo.failed, .selo.canceled, .selo.expired { background: var(--erro-fundo); color: var(--erro); }
+
+.filtros { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.filtros a { text-decoration: none; padding: 5px 12px; border-radius: 99px; background: var(--branco);
+             border: 1px solid var(--borda); color: var(--suave); font-size: .88rem; }
+.filtros a.ativo { background: var(--azul); border-color: var(--azul); color: #fff; }
+
+dl.dados { display: grid; grid-template-columns: max-content 1fr; gap: 6px 18px; margin: 0; }
+dl.dados dt { color: var(--suave); }
+dl.dados dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+
+form.acao { display: grid; gap: 8px; max-width: 420px; }
+label { font-size: .85rem; color: var(--suave); }
+input { width: 100%; padding: 10px 12px; font: inherit; border: 1px solid var(--borda); border-radius: 9px;
+        background: var(--branco); }
+input:focus { outline: 2px solid var(--azul); border-color: transparent; }
+button { padding: 10px 16px; border: 0; border-radius: 9px; font: inherit; font-weight: 700; cursor: pointer;
+         background: var(--azul); color: #fff; justify-self: start; }
+button.perigo { background: var(--erro); }
+button.discreto { background: none; color: var(--suave); font-weight: 400; text-decoration: underline; padding: 4px; }
+button.pequeno { padding: 5px 10px; font-size: .85rem; background: var(--azul-claro); color: var(--azul); }
+.linha { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; }
+.linha > div { flex: 1; min-width: 160px; }
+.dica { color: var(--suave); font-size: .82rem; margin: 0; }
+
+/* No celular, o menu ganha uma linha só dele, com rolagem lateral. */
+@media (max-width: 640px) {
+  .topo-dentro { padding-top: 8px; }
+  .conta { margin-left: auto; }
+  nav { order: 3; flex-basis: 100%; flex-wrap: nowrap; overflow-x: auto; margin: 0 -16px; padding: 0 12px 6px; }
+  nav a { white-space: nowrap; }
+}
+
+/* Tela de entrada */
+.entrada { max-width: 400px; margin: 48px auto; padding: 0 16px; }
+.entrada .cartao { padding: 24px; }
+.entrada form { display: grid; gap: 10px; }
+.entrada button { justify-self: stretch; padding: 12px; }

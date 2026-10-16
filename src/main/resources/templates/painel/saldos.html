@@ -1,0 +1,15 @@
+<section class="grade">
+  {#for b in balances}
+  <div class="cartao">
+    <p class="rotulo">Disponível · {b.currency}</p>
+    <p class="numero{#if b.negative} negativo{/if}">{b.available}</p>
+    <p class="rotulo">Pendente: {b.pending}</p>
+    {#if b.negative}<p class="dica">Negativo porque estornos saem do disponível na hora, e os recebimentos ainda estão pendentes.</p>{/if}
+  </div>
+  {#else}
+  <div class="cartao">
+    <p class="rotulo">Saldo</p>
+    <p>Nada recebido ainda.</p>
+  </div>
+  {/for}
+</section>

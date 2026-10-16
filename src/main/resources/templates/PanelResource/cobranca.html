@@ -1,0 +1,83 @@
+{#include painel/base}
+{#titulo}Cobrança{/titulo}
+{#conteudo}
+<h1>{payment.amount} <span class="selo {payment.statusClass}">{payment.status}</span></h1>
+<p class="sub">{#if payment.description}{payment.description} · {/if}<code>{payment.id}</code></p>
+
+<section class="cartao">
+  <dl class="dados">
+    <dt>Criada em</dt><dd>{payment.createdAt}</dd>
+    {#if payment.paidAt}<dt>Paga em</dt><dd>{payment.paidAt}</dd>{/if}
+    {#if payment.method}<dt>Meio</dt><dd>{payment.method}</dd>{/if}
+    <dt>Estornado</dt><dd>{payment.refunded}</dd>
+    <dt>Página de pagamento</dt><dd><a href="{payment.checkoutUrl}">{payment.checkoutUrl}</a></dd>
+    {#for m in payment.metadata}<dt>{m.key}</dt><dd><code>{m.value}</code></dd>{/for}
+  </dl>
+</section>
+
+{#if !splits.isEmpty}
+<h2>Divisão</h2>
+<div class="tabela">
+  <table>
+    <thead><tr><th>Recebedor</th><th class="num">Parte</th></tr></thead>
+    <tbody>
+      {#for s in splits}
+      <tr><td><a href="/painel/recebedores/{s.recipientId}">{s.recipientName}</a></td><td class="num">{s.amount}</td></tr>
+      {/for}
+    </tbody>
+  </table>
+</div>
+<p class="dica">O que sobra das partes fica com você.</p>
+{/if}
+
+<h2>Estornos</h2>
+{#if refunds.isEmpty}
+<p class="vazio">Nenhum estorno.</p>
+{#else}
+<div class="tabela">
+  <table>
+    <thead><tr><th>Pedido em</th><th class="num">Valor</th><th>Situação</th><th>Motivo</th><th>Concluído em</th></tr></thead>
+    <tbody>
+      {#for r in refunds}
+      <tr>
+        <td>{r.createdAt}</td>
+        <td class="num">{r.amount}</td>
+        <td><span class="selo {r.statusClass}">{r.status}</span></td>
+        <td class="quebra">{#if r.failure}{r.failure}{#else}{r.reason.or('—')}{/if}</td>
+        <td>{r.settledAt.or('—')}</td>
+      </tr>
+      {/for}
+    </tbody>
+  </table>
+</div>
+{/if}
+
+{#if payment.canRefund}
+<h2>Estornar</h2>
+<form method="post" action="/painel/cobrancas/{payment.id}/estornar" class="acao">
+  <input type="hidden" name="csrf" value="{shell.csrf}">
+  <div class="linha">
+    <div>
+      <label for="valor">Valor, em reais</label>
+      <input id="valor" name="valor" inputmode="decimal" placeholder="50,00">
+    </div>
+    <div>
+      <label for="motivo">Motivo (opcional)</label>
+      <input id="motivo" name="motivo" maxlength="500">
+    </div>
+  </div>
+  <p class="dica">Em branco, estorna tudo o que ainda pode ser estornado: {payment.refundable}.</p>
+  <button type="submit" class="perigo">Estornar</button>
+</form>
+{/if}
+
+{#if payment.canCancel}
+<h2>Cancelar</h2>
+<form method="post" action="/painel/cobrancas/{payment.id}/cancelar" class="acao">
+  <input type="hidden" name="csrf" value="{shell.csrf}">
+  <p class="dica">O pagador deixa de conseguir pagar esta cobrança.</p>
+  <button type="submit" class="perigo">Cancelar cobrança</button>
+</form>
+{/if}
+{/conteudo}
+{/include}

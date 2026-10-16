@@ -1,0 +1,19 @@
+{#if payments.isEmpty}
+<p class="vazio">Nenhuma cobrança.</p>
+{#else}
+<div class="tabela">
+  <table>
+    <thead><tr><th>Criada em</th><th>Descrição</th><th class="num">Valor</th><th>Situação</th></tr></thead>
+    <tbody>
+      {#for p in payments}
+      <tr>
+        <td>{p.createdAt}</td>
+        <td class="quebra"><a href="/painel/cobrancas/{p.id}">{p.description.or(p.id)}</a></td>
+        <td class="num">{p.amount}</td>
+        <td><span class="selo {p.statusClass}">{p.status}</span></td>
+      </tr>
+      {/for}
+    </tbody>
+  </table>
+</div>
+{/if}

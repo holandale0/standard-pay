@@ -1,0 +1,14 @@
+{#include painel/base}
+{#titulo}{recipient.name}{/titulo}
+{#conteudo}
+<h1>{recipient.name}</h1>
+<p class="sub"><code>{recipient.id}</code> · cadastrado em {recipient.createdAt}</p>
+
+{#let balances=recipient.balances}
+{#include painel/saldos /}
+{/let}
+
+<h2>Extrato</h2>
+{#include painel/tabela-extrato /}
+{/conteudo}
+{/include}

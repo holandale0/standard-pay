@@ -1,0 +1,15 @@
+{#include painel/base}
+{#titulo}Cobranças{/titulo}
+{#conteudo}
+<h1>Cobranças</h1>
+<nav class="filtros" aria-label="Filtrar por situação">
+  <a href="/painel/cobrancas" {#if filter == ''}class="ativo"{/if}>Todas</a>
+  <a href="/painel/cobrancas?status=pending" {#if filter == 'pending'}class="ativo"{/if}>Pendentes</a>
+  <a href="/painel/cobrancas?status=succeeded" {#if filter == 'succeeded'}class="ativo"{/if}>Pagas</a>
+  <a href="/painel/cobrancas?status=canceled" {#if filter == 'canceled'}class="ativo"{/if}>Canceladas</a>
+  <a href="/painel/cobrancas?status=expired" {#if filter == 'expired'}class="ativo"{/if}>Expiradas</a>
+</nav>
+{#include painel/tabela-cobrancas /}
+<p class="dica">As 100 mais recentes. Cobranças são criadas pela API — <code>POST /v1/payments</code>.</p>
+{/conteudo}
+{/include}

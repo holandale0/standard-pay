@@ -1,0 +1,21 @@
+{#include painel/base}
+{#titulo}Início{/titulo}
+{#conteudo}
+<h1>{shell.merchantName}</h1>
+
+{#include painel/saldos /}
+
+<section class="grade" style="margin-top: 12px">
+  <div class="cartao">
+    <p class="rotulo">Chave de API</p>
+    <p><code>sk_test_…{apiKeyLast4}</code></p>
+    <p class="rotulo">Webhooks para</p>
+    <p>{#if webhookUrl}<code>{webhookUrl}</code>{#else}não configurado{/if}</p>
+  </div>
+</section>
+
+<h2>Últimas cobranças</h2>
+{#include painel/tabela-cobrancas /}
+<p><a href="/painel/cobrancas">Ver todas as cobranças</a></p>
+{/conteudo}
+{/include}

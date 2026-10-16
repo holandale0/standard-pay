@@ -1,0 +1,20 @@
+{#if transactions.isEmpty}
+<p class="vazio">Nenhum lançamento.</p>
+{#else}
+<div class="tabela">
+  <table>
+    <thead><tr><th>Data</th><th>Lançamento</th><th class="num">Valor</th><th>Situação</th><th>Cobrança</th></tr></thead>
+    <tbody>
+      {#for t in transactions}
+      <tr>
+        <td>{t.createdAt}</td>
+        <td>{t.type}</td>
+        <td class="num {#if t.credit}credito{#else}negativo{/if}">{t.amount}</td>
+        <td>{t.status}{#if t.status == 'pendente'} até {t.availableAt}{/if}</td>
+        <td><a href="/painel/cobrancas/{t.paymentId}"><code>{t.paymentId}</code></a></td>
+      </tr>
+      {/for}
+    </tbody>
+  </table>
+</div>
+{/if}

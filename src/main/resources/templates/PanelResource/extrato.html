@@ -1,0 +1,13 @@
+{#include painel/base}
+{#titulo}Extrato{/titulo}
+{#conteudo}
+<h1>Extrato</h1>
+<p class="sub">A sua conta: o que sobra das cobranças depois das partes dos recebedores.</p>
+
+{#include painel/saldos /}
+
+<h2>Lançamentos</h2>
+{#include painel/tabela-extrato /}
+<p class="dica">Recebimentos ficam pendentes até a data de liberação. Estornos saem do disponível na hora.</p>
+{/conteudo}
+{/include}

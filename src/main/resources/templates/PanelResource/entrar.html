@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Entrar · StandardPay</title>
+  <link rel="stylesheet" href="/assets/painel.css">
+</head>
+<body>
+  <div class="faixa">Ambiente de simulação — nenhum valor real é movimentado.</div>
+  <div class="entrada">
+    <p class="marca">StandardPay <span>painel</span></p>
+    <div class="cartao">
+      <h1>Entrar</h1>
+      {#if error}<div class="erro" role="alert">{error}</div>{/if}
+      <form method="post" action="/painel/entrar">
+        <label for="apiKey">Chave de API</label>
+        <input id="apiKey" name="apiKey" type="password" placeholder="sk_test_…" autocomplete="current-password" required autofocus>
+        <button type="submit">Entrar</button>
+      </form>
+      <p class="dica">A mesma chave que o seu sistema usa na API — devolvida uma única vez, no cadastro do lojista.</p>
+    </div>
+  </div>
+</body>
+</html>

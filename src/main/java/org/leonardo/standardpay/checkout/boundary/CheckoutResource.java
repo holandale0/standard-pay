@@ -20,13 +20,11 @@ import org.leonardo.standardpay.payments.control.PaymentProcessor;
 import org.leonardo.standardpay.merchants.entity.Merchant;
 import org.leonardo.standardpay.payments.entity.Payment;
 import org.leonardo.standardpay.payments.entity.PaymentStatus;
+import org.leonardo.standardpay.platform.Money;
 
 import java.net.URI;
-import java.text.NumberFormat;
 import java.time.Instant;
-import java.util.Currency;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -43,8 +41,6 @@ import java.util.Map;
 @Produces(MediaType.TEXT_HTML)
 @SecurityRequirementsSet // o pagador não tem chave: o que protege a página é o id
 public class CheckoutResource {
-
-    private static final Locale PT_BR = Locale.forLanguageTag("pt-BR");
 
     /** Recusas como o pagador as lê. */
     private static final Map<String, String> DECLINE_MESSAGES = Map.of(
@@ -144,21 +140,11 @@ public class CheckoutResource {
         Merchant merchant = Merchant.findById(p.merchant.id);
         String state = payable ? "pending" : p.status.json();
         return Templates.checkout(new Page(
-                p.id, merchant.name, p.description, format(p.amount, p.currency), state, error,
+                p.id, merchant.name, p.description, Money.format(p.amount, p.currency), state, error,
                 p.cardLast4, p.method == null ? null : p.method.name(),
                 pixCode(p), p.returnUrl != null || p.cancelUrl != null, TEST_CARDS));
     }
 
-    /** 19500 em BRL vira "R$ 195,00". */
-    static String format(long cents, String currency) {
-        var nf = NumberFormat.getCurrencyInstance(PT_BR);
-        try {
-            nf.setCurrency(Currency.getInstance(currency));
-        } catch (IllegalArgumentException e) {
-            return currency + " " + String.format(PT_BR, "%.2f", cents / 100.0);
-        }
-        return nf.format(cents / 100.0).replace(' ', ' ');
-    }
 
     /**
      * Um "copia e cola" de mentira, com cara de PIX. Não é um BR Code válido de

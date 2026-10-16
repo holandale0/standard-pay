@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>{#insert titulo}Painel{/} · StandardPay</title>
+  <link rel="stylesheet" href="/assets/painel.css">
+</head>
+<body>
+  <div class="faixa">Ambiente de simulação — nenhum valor real é movimentado.</div>
+  <header class="topo">
+    <div class="topo-dentro">
+      <div class="marca">StandardPay <span>painel</span></div>
+      <nav>
+        <a href="/painel" {#if shell.section == 'inicio'}class="ativo"{/if}>Início</a>
+        <a href="/painel/cobrancas" {#if shell.section == 'cobrancas'}class="ativo"{/if}>Cobranças</a>
+        <a href="/painel/recebedores" {#if shell.section == 'recebedores'}class="ativo"{/if}>Recebedores</a>
+        <a href="/painel/extrato" {#if shell.section == 'extrato'}class="ativo"{/if}>Extrato</a>
+        <a href="/painel/webhooks" {#if shell.section == 'webhooks'}class="ativo"{/if}>Webhooks</a>
+      </nav>
+      <div class="conta">
+        <span>{shell.merchantName}</span>
+        <form method="post" action="/painel/sair">
+          <input type="hidden" name="csrf" value="{shell.csrf}">
+          <button type="submit" class="discreto">Sair</button>
+        </form>
+      </div>
+    </div>
+  </header>
+  <main>
+    {#if shell.notice}<div class="aviso" role="status">{shell.notice}</div>{/if}
+    {#if shell.error}<div class="erro" role="alert">{shell.error}</div>{/if}
+    {#insert conteudo}{/}
+  </main>
+</body>
+</html>

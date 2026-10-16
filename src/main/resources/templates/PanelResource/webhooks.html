@@ -1,0 +1,36 @@
+{#include painel/base}
+{#titulo}Webhooks{/titulo}
+{#conteudo}
+<h1>Webhooks</h1>
+<p class="sub">
+  {#if webhookUrl}Enviados para <code>{webhookUrl}</code>.{#else}Nenhuma URL configurada — nada é enviado. Configure com <code>PATCH /v1/merchants/me</code>.{/if}
+</p>
+
+{#if deliveries.isEmpty}
+<p class="vazio">Nenhuma entrega.</p>
+{#else}
+<div class="tabela">
+  <table>
+    <thead><tr><th>Criado em</th><th>Evento</th><th>Situação</th><th class="num">Tentativas</th><th>Última resposta</th><th></th></tr></thead>
+    <tbody>
+      {#for d in deliveries}
+      <tr>
+        <td>{d.createdAt}</td>
+        <td><code>{d.eventType}</code></td>
+        <td><span class="selo {d.statusClass}">{d.status}</span></td>
+        <td class="num">{d.attempts}</td>
+        <td class="quebra">{d.lastResult}</td>
+        <td>
+          <form method="post" action="/painel/webhooks/{d.id}/reenviar">
+            <input type="hidden" name="csrf" value="{shell.csrf}">
+            <button type="submit" class="pequeno">Reenviar</button>
+          </form>
+        </td>
+      </tr>
+      {/for}
+    </tbody>
+  </table>
+</div>
+{/if}
+{/conteudo}
+{/include}

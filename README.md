@@ -51,6 +51,7 @@ escolhida, troca-se a integração, não o desenho do sistema.
 - **Estornos** totais e parciais — e, com cartões de teste, estornos que levam dias ou que falham
 - **Split**: a cobrança dividida entre recebedores, com saldo pendente e disponível e extrato por conta
 - **Expiração** de cobranças não pagas
+- **Painel web do lojista** em `/painel`: cobranças, estornos, recebedores, saldos, extratos e webhooks numa tela
 - Documentação interativa em `/q/swagger-ui`
 - **Observabilidade**: logs correlacionados por requisição, métricas de negócio e traces que seguem até o webhook do lojista — com um Grafana pronto ([detalhes abaixo](#-observabilidade))
 
@@ -219,6 +220,26 @@ npx newman run postman/StandardPay.postman_collection.json \
 ```
 
 Para outro endereço, `--env-var baseUrl=https://...`.
+
+## Painel do lojista
+
+Em [http://localhost:8080/painel](http://localhost:8080/painel), em português —
+o que a API faz, numa tela: cobranças com filtro por situação, o detalhe de cada
+uma (divisão, estornos), estornar e cancelar, recebedores com saldo e extrato, o
+extrato do próprio lojista e as entregas de webhook, com reenvio.
+
+![Painel do lojista: detalhe de uma cobrança paga com PIX, dividida com uma guia e estornada em parte](docs/painel-lojista.png)
+
+Para entrar, a **chave de API** do lojista — a mesma que o sistema dele usa. Não
+há senha a mais para guardar:
+
+- A chave é conferida uma vez, no login. Dali em diante vale um cookie de sessão
+  com um token próprio — nunca a chave —, guardado no banco só como hash, que
+  expira em 12 horas e é encerrado ao sair.
+- O cookie é `HttpOnly` (nenhum script o lê) e `SameSite=Lax`; e cada formulário
+  leva um token anti-CSRF. Outro site não consegue estornar em nome do lojista.
+- O painel não pode ser exibido dentro de um frame de outro site, e nada dele
+  fica no cache do navegador.
 
 ## Integrando em 4 passos
 
@@ -405,8 +426,9 @@ GET /v1/recipients/rcp_.../balance
 | `GET` | `/v1/webhook-deliveries` | O que foi enviado, e o que aconteceu em cada envio |
 | `POST` | `/v1/webhook-deliveries/{id}/retry` | Enviar de novo |
 
-Todo erro sai no mesmo formato, com um `code` estável para o programa decidir
-o que fazer e uma `message` para quem está depurando:
+Todo erro sai no mesmo formato — inclusive corpo que nem é JSON
+(`invalid_json`) —, com um `code` estável para o programa decidir o que fazer e
+uma `message` para quem está depurando:
 
 ```json
 { "error": { "code": "amount_too_large", "message": "Refund amount 20000 exceeds the refundable 19500 (amounts are in cents).", "requestId": "req_4kVt0Wb4cRMyx2RkVk7aB9qE" } }
@@ -429,6 +451,8 @@ toda linha de log daquela requisição — é o que o lojista manda para o supor
 | `STANDARDPAY_REFUNDS_FAILS_AFTER` | `PT1M` | Quanto o estorno do cartão `…5126` leva para falhar |
 | `STANDARDPAY_REFUNDS_POLL_INTERVAL` | `30s` | De quanto em quanto tempo os estornos pendentes são resolvidos |
 | `STANDARDPAY_BALANCES_AVAILABLE_AFTER` | `P1D` | Quanto o valor de uma cobrança paga fica pendente no saldo antes de ficar disponível |
+| `STANDARDPAY_PANEL_SESSION_LIFETIME` | `PT12H` | Quanto dura a sessão do painel web |
+| `STANDARDPAY_PANEL_TIME_ZONE` | `America/Sao_Paulo` | Fuso das datas no painel |
 | `PORT` | `8080` | Porta HTTP |
 | `QUARKUS_OTEL_SDK_DISABLED` | `true` | `false` liga a telemetria ([Observabilidade](#-observabilidade)) |
 | `STANDARDPAY_OTEL_ENDPOINT` | `http://localhost:4318` | Coletor OpenTelemetry (OTLP sobre HTTP) |
@@ -586,7 +610,7 @@ a recoloca na fila.
 ```
 standard-pay/
 ├── src/main/java/org/leonardo/standardpay/
-│   ├── merchants/                 ← contas de lojista e autenticação por chave de API
+│   ├── merchants/                 ← contas de lojista; autenticação por chave de API e sessão do painel
 │   │   ├── boundary/              ← MerchantsResource · ApiKeyFilter
 │   │   ├── control/               ← MerchantRegistry · Credentials (chave e segredo)
 │   │   └── entity/                ← Merchant
@@ -598,6 +622,7 @@ standard-pay/
 │   │   └── boundary/              ← CheckoutResource: a página do pagador
 │   ├── refunds/                   ← estornos: boundary · control · entity
 │   ├── balances/                  ← split: recebedores, extrato (Ledger) e saldos
+│   ├── dashboard/                 ← painel web do lojista (só boundary: usa as regras dos outros)
 │   ├── webhooks/                  ← eventos para o lojista
 │   │   ├── boundary/              ← WebhookDeliveriesResource
 │   │   ├── control/               ← WebhookPublisher · WebhookDispatcher · Signatures
@@ -606,13 +631,15 @@ standard-pay/
 ├── src/main/resources/
 │   ├── application.properties
 │   ├── db/migration/              ← migrations Flyway
-│   └── templates/                 ← página de checkout (Qute)
+│   ├── templates/                 ← página de checkout e painel (Qute)
+│   └── META-INF/resources/assets/ ← CSS do painel
 ├── src/test/java/org/leonardo/standardpay/
 │   ├── ArchitectureTest.java      ← as regras do BCE, com ArchUnit
 │   ├── ObservabilityTest.java     ← X-Request-Id, métricas e traceparent
-│   ├── merchants/ · payments/ · checkout/ · refunds/ · webhooks/ · balances/
+│   ├── merchants/ · payments/ · checkout/ · refunds/ · webhooks/ · balances/ · dashboard/
 │   └── support/                   ← Api (atalhos) · WebhookSink (lojista de mentira)
 ├── diagrams/                      ← diagramas archify: JSON-fonte, HTML interativo e SVG
+├── docs/                          ← capturas de tela do README
 ├── observabilidade/               ← painel do Grafana, carregado pelo docker-compose
 ├── postman/                       ← collection com a jornada completa e 83 asserções
 ├── scripts/                       ← extração dos SVG dos diagramas
@@ -639,7 +666,9 @@ testes: se ele falhar, o nome já diz qual das duas coisas quebrou.
 
 ## Próximos passos
 
-- Painel web do lojista (hoje, tudo é pela API)
+- Taxa da plataforma, descontada de cada recebimento e mostrada no extrato
+- Saque: transferir o saldo disponível para uma conta bancária fictícia
+- Relógio de teste, para avançar prazos (expiração, estornos, liberação de saldo) sem esperar
 
 ## Licença
 
