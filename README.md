@@ -1,5 +1,7 @@
 # StandardPay
 
+[![CI](https://github.com/holandale0/standard-pay/actions/workflows/ci.yml/badge.svg)](https://github.com/holandale0/standard-pay/actions/workflows/ci.yml)
+
 Simulador de plataforma de pagamentos — funciona como um PayPal ou um Stripe,
 mas **nenhum dinheiro de verdade é movimentado**.
 
@@ -81,7 +83,9 @@ escolhida, troca-se a integração, não o desenho do sistema.
 | Testes de API | Postman (collection v2.1) + Newman | — / 6.2 |
 | Diagramas | [archify](https://github.com/tt-a1i/archify) | 3.1 |
 | Extração dos SVG | Python | 3 (testado no 3.14) |
+| Imagem Docker | Build multi-stage; base `ubi9/openjdk-21-runtime` | 1.24 |
 | Contêineres | Docker Compose | PostgreSQL 18 · otel-lgtm 0.36.0 |
+| CI e publicação da imagem | GitHub Actions + GitHub Container Registry | — |
 
 As versões das bibliotecas vêm do BOM do Quarkus — o `pom.xml` fixa só o
 Quarkus e o ArchUnit (o `micrometer-registry-otlp` também vem do BOM). Para conferir as versões resolvidas:
@@ -94,6 +98,49 @@ Quarkus não troque a versão do banco dos testes sem ninguém perceber.
 ---
 
 ## Rodando
+
+### Só com Docker
+
+Não precisa de Java nem de Maven. A imagem fica em
+`ghcr.io/holandale0/standard-pay`, para amd64 e arm64:
+
+```bash
+docker network create standardpay
+docker run -d --name standardpay-db --network standardpay \
+  -e POSTGRES_DB=standardpay -e POSTGRES_USER=standardpay -e POSTGRES_PASSWORD=standardpay \
+  postgres:18-alpine
+docker run -d --name standardpay --network standardpay --restart unless-stopped \
+  -p 127.0.0.1:8080:8080 \
+  -e STANDARDPAY_DB_URL=jdbc:postgresql://standardpay-db:5432/standardpay \
+  -e STANDARDPAY_DB_USER=standardpay -e STANDARDPAY_DB_PASSWORD=standardpay \
+  ghcr.io/holandale0/standard-pay:latest
+```
+
+O `--restart` não é enfeite: o Postgres leva alguns segundos para aceitar
+conexões, e o StandardPay que sobe antes dele encerra na hora. O Docker o sobe
+de novo até o banco responder.
+
+Ou, com este repositório clonado, o mesmo em um comando:
+
+```bash
+docker compose --profile app up -d                         # http://localhost:8080
+STANDARDPAY_PORT=8095 docker compose --profile app up -d   # com a 8080 ocupada
+```
+
+A imagem roda no perfil de produção: o banco é obrigatório, e os logs saem em
+JSON. A migration roda sozinha na subida. Se o pagador abrir a página de outra
+máquina, informe o endereço dela em `STANDARDPAY_PUBLIC_URL`
+([Configuração](#configuração)).
+
+| Tag | Quando muda |
+|---|---|
+| `latest` | A cada push na `main`, depois de os testes passarem |
+| `1.2.3`, `1.2`, `1` | A cada tag `v1.2.3` |
+| `sha-abc1234` | Fixa num commit |
+
+Para gerar a imagem localmente: `docker build -t standard-pay .`
+
+### Com Java, para desenvolver
 
 Precisa de Java 21 e Docker.
 
@@ -476,7 +523,6 @@ standard-pay/
 │   ├── application.properties
 │   ├── db/migration/              ← migrations Flyway
 │   └── templates/                 ← página de checkout (Qute)
-├── src/main/docker/               ← Dockerfiles gerados pelo Quarkus (JVM e nativo)
 ├── src/test/java/org/leonardo/standardpay/
 │   ├── ArchitectureTest.java      ← as regras do BCE, com ArchUnit
 │   ├── ObservabilityTest.java     ← X-Request-Id, métricas e traceparent
@@ -486,7 +532,9 @@ standard-pay/
 ├── observabilidade/               ← painel do Grafana, carregado pelo docker-compose
 ├── postman/                       ← collection com a jornada completa e 62 asserções
 ├── scripts/                       ← extração dos SVG dos diagramas
-└── docker-compose.yml             ← PostgreSQL; e, no perfil observabilidade, o Grafana
+├── .github/workflows/ci.yml       ← testes em todo push; publica a imagem na main e nas tags
+├── Dockerfile                     ← compila e empacota dentro do Docker, para amd64 e arm64
+└── docker-compose.yml             ← PostgreSQL; nos perfis app e observabilidade, o StandardPay e o Grafana
 ```
 
 ---
@@ -510,7 +558,6 @@ testes: se ele falhar, o nome já diz qual das duas coisas quebrou.
 - Split: dividir o valor entre recebedores, com saldo e extrato por recebedor
 - Simular falhas de estorno e estornos que levam dias
 - Painel web do lojista (hoje, tudo é pela API)
-- Imagem publicada para rodar com um `docker run`
 
 ## Licença
 

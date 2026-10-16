@@ -1,5 +1,5 @@
+# Só o necessário para compilar: o resto deixaria o contexto do build pesado
+# e invalidaria o cache a cada mudança em documentação.
 *
-!target/*-runner
-!target/*-runner.jar
-!target/lib/*
-!target/quarkus-app/*
+!pom.xml
+!src/main/
